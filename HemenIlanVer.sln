@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B4E988EC-CBC8-4D1E-A9DC-643D997B4939}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HemenIlanVer.Domain", "src\HemenIlanVer.Domain\HemenIlanVer.Domain.csproj", "{4035A881-FC59-4977-AE39-E80EF110A857}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HemenIlanVer.Application", "src\HemenIlanVer.Application\HemenIlanVer.Application.csproj", "{DE37C4C5-2416-4ED9-99B7-FDACCBD19F2E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HemenIlanVer.Infrastructure", "src\HemenIlanVer.Infrastructure\HemenIlanVer.Infrastructure.csproj", "{9D645D6D-8384-4299-A745-A3D4006ECADA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HemenIlanVer.Contracts", "src\HemenIlanVer.Contracts\HemenIlanVer.Contracts.csproj", "{3D3B5BC0-8517-4931-AE7E-A6CA74F8CECD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HemenIlanVer.Api", "src\HemenIlanVer.Api\HemenIlanVer.Api.csproj", "{B9B7EA23-2105-460F-8DF4-2B9838413995}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4035A881-FC59-4977-AE39-E80EF110A857}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4035A881-FC59-4977-AE39-E80EF110A857}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4035A881-FC59-4977-AE39-E80EF110A857}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4035A881-FC59-4977-AE39-E80EF110A857}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DE37C4C5-2416-4ED9-99B7-FDACCBD19F2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DE37C4C5-2416-4ED9-99B7-FDACCBD19F2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DE37C4C5-2416-4ED9-99B7-FDACCBD19F2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DE37C4C5-2416-4ED9-99B7-FDACCBD19F2E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D645D6D-8384-4299-A745-A3D4006ECADA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D645D6D-8384-4299-A745-A3D4006ECADA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D645D6D-8384-4299-A745-A3D4006ECADA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D645D6D-8384-4299-A745-A3D4006ECADA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3D3B5BC0-8517-4931-AE7E-A6CA74F8CECD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3D3B5BC0-8517-4931-AE7E-A6CA74F8CECD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3D3B5BC0-8517-4931-AE7E-A6CA74F8CECD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3D3B5BC0-8517-4931-AE7E-A6CA74F8CECD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B9B7EA23-2105-460F-8DF4-2B9838413995}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B9B7EA23-2105-460F-8DF4-2B9838413995}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B9B7EA23-2105-460F-8DF4-2B9838413995}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B9B7EA23-2105-460F-8DF4-2B9838413995}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{4035A881-FC59-4977-AE39-E80EF110A857} = {B4E988EC-CBC8-4D1E-A9DC-643D997B4939}
+		{DE37C4C5-2416-4ED9-99B7-FDACCBD19F2E} = {B4E988EC-CBC8-4D1E-A9DC-643D997B4939}
+		{9D645D6D-8384-4299-A745-A3D4006ECADA} = {B4E988EC-CBC8-4D1E-A9DC-643D997B4939}
+		{3D3B5BC0-8517-4931-AE7E-A6CA74F8CECD} = {B4E988EC-CBC8-4D1E-A9DC-643D997B4939}
+		{B9B7EA23-2105-460F-8DF4-2B9838413995} = {B4E988EC-CBC8-4D1E-A9DC-643D997B4939}
+	EndGlobalSection
+EndGlobal

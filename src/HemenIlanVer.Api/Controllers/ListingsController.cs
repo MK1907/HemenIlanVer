@@ -1,0 +1,59 @@
+using HemenIlanVer.Application.Abstractions;
+using HemenIlanVer.Api.Extensions;
+using HemenIlanVer.Contracts.Listings;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace HemenIlanVer.Api.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public sealed class ListingsController : ControllerBase
+{
+    private readonly IListingService _listings;
+
+    public ListingsController(IListingService listings) => _listings = listings;
+
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<IActionResult> Search(
+        [FromQuery] Guid? categoryId,
+        [FromQuery] Guid? cityId,
+        [FromQuery] decimal? minPrice,
+        [FromQuery] decimal? maxPrice,
+        [FromQuery] string? q,
+        [FromQuery] string? filterModel,
+        [FromQuery] string? filterGear,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? sort = null,
+        CancellationToken ct = default)
+    {
+        var result = await _listings.SearchAsync(categoryId, cityId, minPrice, maxPrice, q, filterModel, filterGear, page, pageSize, sort, ct);
+        return Ok(result);
+    }
+
+    [HttpGet("{id:guid}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
+    {
+        var x = await _listings.GetByIdAsync(id, ct);
+        return x is null ? NotFound() : Ok(x);
+    }
+
+    [HttpPost]
+    [Authorize]
+    public async Task<IActionResult> Create([FromBody] CreateListingRequest request, CancellationToken ct)
+    {
+        var id = await _listings.CreateAsync(User.GetUserId(), request, ct);
+        return CreatedAtAction(nameof(GetById), new { id }, new { id });
+    }
+
+    [HttpPost("{id:guid}/favorite")]
+    [Authorize]
+    public async Task<IActionResult> Favorite(Guid id, CancellationToken ct)
+    {
+        var added = await _listings.ToggleFavoriteAsync(User.GetUserId(), id, ct);
+        return Ok(new { favorited = added });
+    }
+}

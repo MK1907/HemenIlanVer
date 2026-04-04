@@ -1,0 +1,60 @@
+# Docker Desktop: proje kökünde `docker compose up --build`
+# Arayüz: http://localhost:3000  |  API/Swagger: http://localhost:8080/swagger
+#
+# PostgreSQL (pgAdmin, DBeaver, psql — bilgisayarınızdan):
+#   Host: localhost  (veya 127.0.0.1)  — "db" sadece Docker içi servis adıdır, dışarıdan çözülmez.
+#   Port: 5432  |  Database: hemenilan  |  User: postgres  |  Password: postgres
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hemenilan
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hemenilan"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ConnectionStrings__Default: Host=db;Port=5432;Database=hemenilan;Username=postgres;Password=postgres
+      Jwt__SigningKey: DEV_ONLY_CHANGE_ME_TO_64_CHAR_OR_LONGER_SECRET_KEY_FOR_PRODUCTION_1234567890
+      Cors__Origins__0: http://localhost:3000
+      Cors__Origins__1: http://127.0.0.1:3000
+      Cors__Origins__2: http://localhost
+      Cors__Origins__3: http://127.0.0.1
+      OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8080
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:

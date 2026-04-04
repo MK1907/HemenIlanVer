@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/.vs/
+*.user
+*.suo
+.env
+.env.local
+**/appsettings.Local.json
+*.log
