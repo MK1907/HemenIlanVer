@@ -133,9 +133,21 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "=== BOOTSTRAP KURALLARI ===\n" +
             "- Mevcut slug'lardan biri uygunsa → bootstrap.needed=false, o slug'ı seç.\n" +
             "- Uygun kategori YOKSA → bootstrap.needed=true, doğru isim ve slug ile yeni oluştur.\n" +
-            "- Yeni kategori oluştururken 4-8 anlamlı filtre (attribute) belirle. Enum için options en az 2.\n" +
-            "- Giyim/aksesuar ürünü için filtre örnekleri: marka, renk, beden, malzeme, durum (sıfır/ikinci el).\n" +
-            "- TÜRKÇE isimler kullan, slug'lar küçük harf ve tire.";
+            "- TÜRKÇE isimler kullan, slug'lar küçük harf ve tire.\n\n" +
+
+            "=== FİLTRE (ATTRIBUTE) KURALLARI ===\n" +
+            "Yeni kategori oluştururken, o ürün/hizmet türünde PIYASADA KULLANILAN TÜM ÖZELLİKLERİ filters dizisine ekle.\n" +
+            "Sahibinden.com, Hepsiburada, Trendyol gibi sitelerde o kategoride hangi filtreler varsa HEPSİNİ koy.\n" +
+            "En az 10, en fazla 20 filtre üret. İlk sıraya en önemli olanları koy.\n" +
+            "Enum için options en az 3-4 seçenek koy (gerçekçi).\n\n" +
+
+            "KATEGORİ BAZLI FİLTRE ÖRNEKLERİ (referans — bunlarla sınırlı kalma, eksiksiz ol):\n" +
+            "Otomobil: marka, model, yıl, km, vites, yakıt, kasaTipi, motorHacmi, beygir, renk, çekiş, plaka, hasarDurumu, boyaDeğişen, garanti, takasUygun, kimden\n" +
+            "Konut: odaSayısı, m2, binaYaşı, kat, toplamKat, ısıtma, banyo, balkon, esyalı, siteMi, otopark, cephe, tapuDurumu, kimden\n" +
+            "Cep Telefonu: marka, model, hafıza, ram, ekranBoyutu, renk, garanti, durum, kutuVarMi, kimden\n" +
+            "Çanta: marka, tip, malzeme, renk, boyut, cinsiyet, durum, orijinallik, kutuSertifika, kimden\n" +
+            "Ayakkabı: marka, model, numara, renk, cinsiyet, tip, malzeme, durum, kimden\n" +
+            "Özel Ders: branş, hedefSınav, format, seviye, tecrübe, konum, kimden";
 
         var body = new
         {
