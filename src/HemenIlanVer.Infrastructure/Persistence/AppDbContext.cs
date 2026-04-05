@@ -25,6 +25,7 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRo
     public DbSet<AiExtractionLog> AiExtractionLogs => Set<AiExtractionLog>();
     public DbSet<SearchLog> SearchLogs => Set<SearchLog>();
     public DbSet<ModerationLog> ModerationLogs => Set<ModerationLog>();
+    public DbSet<ListingEmbedding> ListingEmbeddings => Set<ListingEmbedding>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -180,6 +181,15 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             e.HasKey(x => x.Id);
             e.Property(x => x.Action).HasMaxLength(80).IsRequired();
             e.HasOne(x => x.Listing).WithMany().HasForeignKey(x => x.ListingId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<ListingEmbedding>(e =>
+        {
+            e.ToTable("listing_embeddings");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.SearchableText).IsRequired();
+            e.HasIndex(x => x.ListingId).IsUnique();
+            e.HasOne(x => x.Listing).WithMany().HasForeignKey(x => x.ListingId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

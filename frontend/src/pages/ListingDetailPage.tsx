@@ -19,16 +19,31 @@ type Detail = {
   viewCount: number;
 };
 
+type SimilarListing = {
+  id: string;
+  title: string;
+  price: number | null;
+  currency: string;
+  cityName: string;
+  districtName?: string | null;
+  categoryName: string;
+  primaryImageUrl?: string | null;
+};
+
 export function ListingDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [msg, setMsg] = useState('');
   const [sent, setSent] = useState(false);
+  const [similar, setSimilar] = useState<SimilarListing[]>([]);
 
   useEffect(() => {
     if (!id) return;
     api.get<Detail>(`/api/listings/${id}`).then((r) => setDetail(r.data));
+    api.get<SimilarListing[]>(`/api/listings/${id}/similar?count=6`)
+      .then((r) => setSimilar(r.data))
+      .catch(() => {});
   }, [id]);
 
   async function sendMessage(e: FormEvent) {
@@ -93,6 +108,30 @@ export function ListingDetailPage() {
           )}
         </section>
       </div>
+
+      {similar.length > 0 && (
+        <section className="similar-listings">
+          <h2>Benzer İlanlar</h2>
+          <div className="listing-grid">
+            {similar.map((x) => (
+              <Link key={x.id} to={`/listings/${x.id}`} className="listing-card">
+                <div className="thumb">
+                  {x.primaryImageUrl ? <img src={x.primaryImageUrl} alt="" /> : <span>Görsel yok</span>}
+                </div>
+                <div className="body">
+                  <h3>{x.title}</h3>
+                  <p className="meta">
+                    {x.cityName}{x.districtName ? ` / ${x.districtName}` : ''} · {x.categoryName}
+                  </p>
+                  <p className="price">
+                    {x.price != null ? `${x.price.toLocaleString('tr-TR')} ${x.currency}` : 'Fiyat sorunuz'}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

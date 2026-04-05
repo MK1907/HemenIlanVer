@@ -196,34 +196,39 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             .Select(x => new { x.Id, x.ParentId, x.Name, x.Slug })
             .ToListAsync(ct);
 
-        var rootSlug = doc.TryGetProperty("rootSlug", out var rs) ? rs.GetString() : null;
-        var childSlug = doc.TryGetProperty("suggestedChildSlug", out var cs) ? cs.GetString() : null;
+        var rootSlugRaw = doc.TryGetProperty("rootSlug", out var rs) ? rs.GetString() : null;
+        var childSlugRaw = doc.TryGetProperty("suggestedChildSlug", out var cs) ? cs.GetString() : null;
         var conf = doc.TryGetProperty("confidence", out var cf) && cf.TryGetDouble(out var cfd) ? cfd : 0.75;
 
-        if (string.IsNullOrWhiteSpace(rootSlug))
+        if (string.IsNullOrWhiteSpace(rootSlugRaw))
             throw new InvalidOperationException("OpenAI yanıtında rootSlug yok veya geçersiz.");
 
-        var rootCat = roots.FirstOrDefault(r => r.Slug == rootSlug)
-            ?? roots.FirstOrDefault(r => CategorySlugHelper.SlugEquals(r.Slug, rootSlug))
-            ?? roots.FirstOrDefault(r => CategorySlugHelper.NormalizeToAscii(r.Slug) == CategorySlugHelper.NormalizeToAscii(rootSlug))
-            ?? roots.FirstOrDefault(r => r.Slug == CategorySlugHelper.SanitizeSlug(rootSlug));
+        var rootSlugNorm = CategorySlugHelper.SanitizeSlug(rootSlugRaw);
+        var childSlugNorm = !string.IsNullOrWhiteSpace(childSlugRaw) ? CategorySlugHelper.SanitizeSlug(childSlugRaw) : null;
+
+        var rootCat = roots.FirstOrDefault(r => r.Slug == rootSlugNorm)
+            ?? roots.FirstOrDefault(r => CategorySlugHelper.SlugEquals(r.Slug, rootSlugRaw))
+            ?? roots.FirstOrDefault(r => r.Slug == CategorySlugHelper.NormalizeToAscii(rootSlugRaw));
 
         if (rootCat is null)
         {
-            _logger.LogWarning("rootSlug '{Slug}' DB'de bulunamadı, bootstrap ile oluşturuluyor.", rootSlug);
-            var forceBootstrap = new Dictionary<string, object>
+            _logger.LogWarning("rootSlug '{Slug}' (normalized: '{Norm}') DB'de bulunamadı, bootstrap ile oluşturuluyor.", rootSlugRaw, rootSlugNorm);
+
+            var forceBootstrapData = new Dictionary<string, object>
             {
                 ["bootstrap"] = new Dictionary<string, object>
                 {
                     ["needed"] = true,
-                    ["rootName"] = doc.TryGetProperty("bootstrap", out var bDoc) && bDoc.TryGetProperty("rootName", out var rn) && rn.ValueKind == JsonValueKind.String ? rn.GetString()! : rootSlug!,
-                    ["rootSlug"] = rootSlug!,
-                    ["childName"] = !string.IsNullOrEmpty(childSlug) ? childSlug : "Genel",
-                    ["childSlug"] = !string.IsNullOrEmpty(childSlug) ? childSlug : "genel",
-                    ["filters"] = Array.Empty<object>()
+                    ["rootName"] = doc.TryGetProperty("bootstrap", out var bDoc) && bDoc.TryGetProperty("rootName", out var rn) && rn.ValueKind == JsonValueKind.String ? rn.GetString()! : rootSlugRaw!,
+                    ["rootSlug"] = rootSlugRaw!,
+                    ["childName"] = doc.TryGetProperty("bootstrap", out var bDoc2) && bDoc2.TryGetProperty("childName", out var cn) && cn.ValueKind == JsonValueKind.String ? cn.GetString()! : (!string.IsNullOrEmpty(childSlugRaw) ? childSlugRaw : "Genel"),
+                    ["childSlug"] = doc.TryGetProperty("bootstrap", out var bDoc3) && bDoc3.TryGetProperty("childSlug", out var csb) && csb.ValueKind == JsonValueKind.String ? csb.GetString()! : (!string.IsNullOrEmpty(childSlugRaw) ? childSlugRaw : "genel"),
+                    ["filters"] = doc.TryGetProperty("bootstrap", out var bDoc4) && bDoc4.TryGetProperty("filters", out var origFilters) && origFilters.ValueKind == JsonValueKind.Array
+                        ? (object)origFilters
+                        : Array.Empty<object>()
                 }
             };
-            var forceJson = JsonSerializer.Serialize(forceBootstrap);
+            var forceJson = JsonSerializer.Serialize(forceBootstrapData);
             var forceDoc = JsonDocument.Parse(forceJson).RootElement;
             await _categoryBootstrap.ApplyFromDetectDocumentAsync(forceDoc, ct);
 
@@ -238,14 +243,13 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
                 .Select(x => new { x.Id, x.ParentId, x.Name, x.Slug })
                 .ToListAsync(ct);
 
-            rootCat = roots.FirstOrDefault(r => r.Slug == rootSlug)
-                ?? roots.FirstOrDefault(r => CategorySlugHelper.SlugEquals(r.Slug, rootSlug))
-                ?? roots.FirstOrDefault(r => CategorySlugHelper.NormalizeToAscii(r.Slug) == CategorySlugHelper.NormalizeToAscii(rootSlug))
-                ?? roots.FirstOrDefault(r => r.Slug == CategorySlugHelper.SanitizeSlug(rootSlug))
+            rootSlugNorm = CategorySlugHelper.SanitizeSlug(rootSlugRaw);
+            rootCat = roots.FirstOrDefault(r => r.Slug == rootSlugNorm)
+                ?? roots.FirstOrDefault(r => CategorySlugHelper.SlugEquals(r.Slug, rootSlugRaw))
                 ?? roots.LastOrDefault();
 
             if (rootCat is null)
-                throw new InvalidOperationException($"Kategori oluşturulamadı (rootSlug: {rootSlug}).");
+                throw new InvalidOperationException($"Kategori oluşturulamadı (rootSlug: {rootSlugRaw}).");
         }
 
         var subs = children.Where(c => c.ParentId == rootCat.Id)
@@ -253,11 +257,11 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             .ToList();
 
         Guid? leafId = null;
-        if (!string.IsNullOrEmpty(childSlug))
+        if (!string.IsNullOrEmpty(childSlugRaw))
         {
-            var match = children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == childSlug)
-                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlug))
-                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.NormalizeToAscii(c.Slug) == CategorySlugHelper.NormalizeToAscii(childSlug));
+            var match = children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == childSlugNorm)
+                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlugRaw))
+                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == CategorySlugHelper.NormalizeToAscii(childSlugRaw));
             if (match is not null) leafId = match.Id;
             else leafId = children.FirstOrDefault(c => c.ParentId == rootCat.Id)?.Id;
         }

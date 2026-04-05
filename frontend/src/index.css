@@ -988,3 +988,12 @@ code {
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
 }
+
+.similar-listings {
+  margin-top: 2.5rem;
+}
+.similar-listings h2 {
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  color: var(--text);
+}

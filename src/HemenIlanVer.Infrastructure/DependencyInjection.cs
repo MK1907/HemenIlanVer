@@ -47,6 +47,9 @@ public static class DependencyInjection
         services.AddScoped<IAiListingExtractionService, AiListingExtractionService>();
         services.AddScoped<IAiListingPartialSuggestionService, AiListingPartialSuggestionService>();
         services.AddScoped<IAiSearchExtractionService, AiSearchExtractionService>();
+        services.AddScoped<IEmbeddingService, EmbeddingService>();
+        services.AddScoped<IListingIndexService, ListingIndexService>();
+        services.AddScoped<IRagSearchService, RagSearchService>();
 
         return services;
     }

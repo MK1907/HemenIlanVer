@@ -11,8 +11,15 @@ namespace HemenIlanVer.Api.Controllers;
 public sealed class ListingsController : ControllerBase
 {
     private readonly IListingService _listings;
+    private readonly IRagSearchService _rag;
+    private readonly IListingIndexService _indexer;
 
-    public ListingsController(IListingService listings) => _listings = listings;
+    public ListingsController(IListingService listings, IRagSearchService rag, IListingIndexService indexer)
+    {
+        _listings = listings;
+        _rag = rag;
+        _indexer = indexer;
+    }
 
     [HttpGet]
     [AllowAnonymous]
@@ -27,10 +34,17 @@ public sealed class ListingsController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? sort = null,
+        [FromQuery] string? searchMode = null,
         CancellationToken ct = default)
     {
-        var result = await _listings.SearchAsync(categoryId, cityId, minPrice, maxPrice, q, filterModel, filterGear, page, pageSize, sort, ct);
-        return Ok(result);
+        if (!string.IsNullOrWhiteSpace(q) && searchMode is null or "hybrid" or "vector")
+        {
+            var result = await _rag.HybridSearchAsync(q, categoryId, cityId, minPrice, maxPrice, page, pageSize, ct);
+            return Ok(result);
+        }
+
+        var fallback = await _listings.SearchAsync(categoryId, cityId, minPrice, maxPrice, q, filterModel, filterGear, page, pageSize, sort, ct);
+        return Ok(fallback);
     }
 
     [HttpGet("{id:guid}")]
@@ -41,12 +55,28 @@ public sealed class ListingsController : ControllerBase
         return x is null ? NotFound() : Ok(x);
     }
 
+    [HttpGet("{id:guid}/similar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetSimilar(Guid id, [FromQuery] int count = 6, CancellationToken ct = default)
+    {
+        var items = await _rag.FindSimilarAsync(id, count, ct);
+        return Ok(items);
+    }
+
     [HttpPost]
     [Authorize]
     public async Task<IActionResult> Create([FromBody] CreateListingRequest request, CancellationToken ct)
     {
         var id = await _listings.CreateAsync(User.GetUserId(), request, ct);
         return CreatedAtAction(nameof(GetById), new { id }, new { id });
+    }
+
+    [HttpPost("reindex")]
+    [Authorize]
+    public async Task<IActionResult> ReindexAll(CancellationToken ct)
+    {
+        await _indexer.ReindexAllAsync(ct);
+        return Ok(new { message = "Reindex completed" });
     }
 
     [HttpPost("{id:guid}/favorite")]

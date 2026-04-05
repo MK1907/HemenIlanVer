@@ -37,6 +37,7 @@ export function ListingsPage() {
     const sort = params.get('sort');
     const filterModel = params.get('filterModel');
     const filterGear = params.get('filterGear');
+    const searchMode = params.get('searchMode');
     if (categoryId) qs.set('categoryId', categoryId);
     if (cityId) qs.set('cityId', cityId);
     if (minPrice) qs.set('minPrice', minPrice);
@@ -45,6 +46,7 @@ export function ListingsPage() {
     if (filterModel) qs.set('filterModel', filterModel);
     if (filterGear) qs.set('filterGear', filterGear);
     if (sort) qs.set('sort', sort);
+    if (searchMode) qs.set('searchMode', searchMode);
     qs.set('page', params.get('page') ?? '1');
     qs.set('pageSize', '20');
 

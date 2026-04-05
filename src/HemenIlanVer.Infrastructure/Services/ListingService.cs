@@ -10,8 +10,13 @@ namespace HemenIlanVer.Infrastructure.Services;
 public sealed class ListingService : IListingService
 {
     private readonly AppDbContext _db;
+    private readonly IListingIndexService _indexer;
 
-    public ListingService(AppDbContext db) => _db = db;
+    public ListingService(AppDbContext db, IListingIndexService indexer)
+    {
+        _db = db;
+        _indexer = indexer;
+    }
 
     public async Task<PagedListingsDto> SearchAsync(
         Guid? categoryId,
@@ -208,6 +213,13 @@ public sealed class ListingService : IListingService
         }
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        if (listing.Status == ListingStatus.Published)
+        {
+            try { await _indexer.IndexListingAsync(listing.Id, cancellationToken); }
+            catch { /* embedding failure should not block listing creation */ }
+        }
+
         return listing.Id;
     }
 

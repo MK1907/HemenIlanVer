@@ -68,11 +68,23 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
-        var hasAttrs = await _db.CategoryAttributes.AnyAsync(a => a.CategoryId == child.Id, cancellationToken);
-        if (hasAttrs)
+        var existingAttrs = await _db.CategoryAttributes
+            .Where(a => a.CategoryId == child.Id)
+            .Select(a => a.AttributeKey)
+            .ToListAsync(cancellationToken);
+
+        var hasRealAttrs = existingAttrs.Count > 1 || (existingAttrs.Count == 1 && existingAttrs[0] != "aciklama");
+        if (hasRealAttrs)
         {
             await tx.CommitAsync(cancellationToken);
             return;
+        }
+
+        if (existingAttrs.Count == 1 && existingAttrs[0] == "aciklama")
+        {
+            await _db.CategoryAttributes
+                .Where(a => a.CategoryId == child.Id && a.AttributeKey == "aciklama")
+                .ExecuteDeleteAsync(cancellationToken);
         }
 
         var filterCount = 0;
