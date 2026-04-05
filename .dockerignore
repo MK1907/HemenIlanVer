@@ -4,3 +4,4 @@
 **/dist/
 .git/
 **/.vs/
+**/appsettings.Local.json

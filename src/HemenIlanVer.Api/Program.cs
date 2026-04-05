@@ -7,6 +7,9 @@ using HemenIlanVer.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+// appsettings.Local.json sonradan yüklendiği için varsayılan zincirde env'i ezerdi; tekrar ekleyerek
+// Docker / OPENAI__ApiKey gibi ortam değişkenlerinin öncelikli olmasını sağlıyoruz.
+builder.Configuration.AddEnvironmentVariables();
 
 builder.Services.AddControllers().AddJsonOptions(o =>
 {
