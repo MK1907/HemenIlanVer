@@ -36,7 +36,7 @@ export function CreateListingPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState<string>('');
-  const [listingType, setListingType] = useState('Satilik');
+  const [listingType] = useState('Satilik');
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [detect, setDetect] = useState<DetectResult | null>(null);
