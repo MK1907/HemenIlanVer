@@ -183,7 +183,7 @@ public sealed class ListingService : IListingService
             Price = request.Price,
             Currency = request.Currency,
             ListingType = lt,
-            Status = request.Publish ? ListingStatus.PendingReview : ListingStatus.Draft,
+            Status = request.Publish ? ListingStatus.Published : ListingStatus.Draft,
             CityId = request.CityId,
             DistrictId = request.DistrictId,
             PublishedAt = request.Publish ? DateTimeOffset.UtcNow : null,
