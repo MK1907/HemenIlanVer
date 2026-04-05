@@ -15,7 +15,7 @@ public sealed class RagSearchService : IRagSearchService
     private readonly IEmbeddingService _embedding;
     private readonly ILogger<RagSearchService> _log;
     private const int RrfK = 60;
-    private const int CandidatePoolSize = 50;
+    private const int CandidatePoolSize = 100;
 
     public RagSearchService(AppDbContext db, IEmbeddingService embedding, ILogger<RagSearchService> log)
     {
@@ -30,6 +30,7 @@ public sealed class RagSearchService : IRagSearchService
         Guid? cityId,
         decimal? minPrice,
         decimal? maxPrice,
+        IReadOnlyDictionary<string, string?>? attributeFilters,
         int page,
         int pageSize,
         CancellationToken ct = default)
@@ -37,15 +38,26 @@ public sealed class RagSearchService : IRagSearchService
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 50);
 
+        // Phase 1: Vector + keyword search (no attribute filter — cast a wide net)
         var vectorTask = GetVectorRankedIdsAsync(query, categoryId, cityId, minPrice, maxPrice, ct);
         var keywordTask = GetKeywordRankedIdsAsync(query, categoryId, cityId, minPrice, maxPrice, ct);
 
         await Task.WhenAll(vectorTask, keywordTask);
 
-        var vectorResults = vectorTask.Result;
-        var keywordResults = keywordTask.Result;
+        var fused = FuseRRF(vectorTask.Result, keywordTask.Result);
 
-        var fused = FuseRRF(vectorResults, keywordResults);
+        // Phase 2: Post-filter by attribute constraints (hard filter)
+        var resolvedFilters = await ResolveAttributeFilters(attributeFilters, ct);
+        if (resolvedFilters.Count > 0)
+        {
+            var candidateIds = fused.Select(x => x.Id).ToList();
+            var passedIds = await PostFilterByAttributes(candidateIds, resolvedFilters, ct);
+            fused = fused.Where(x => passedIds.Contains(x.Id)).ToList();
+            _log.LogInformation(
+                "Post-filter: {Before} candidates → {After} passed attribute filters",
+                candidateIds.Count, fused.Count);
+        }
+
         var total = fused.Count;
         var pageIds = fused.Skip((page - 1) * pageSize).Take(pageSize).Select(x => x.Id).ToList();
 
@@ -127,8 +139,179 @@ public sealed class RagSearchService : IRagSearchService
             .ToList();
     }
 
+    // ── Attribute filter resolution ─────────────────────────────────────
+
+    private record struct ResolvedFilter(string DbKey, string Op, List<int>? NumValues, List<string>? TextValues);
+
+    /// <summary>
+    /// Parses AI-produced attribute filters into resolved filters with actual DB keys.
+    /// Returns empty list if no valid filters (caller skips post-filter).
+    /// </summary>
+    private async Task<List<ResolvedFilter>> ResolveAttributeFilters(
+        IReadOnlyDictionary<string, string?>? filters, CancellationToken ct)
+    {
+        if (filters is null || filters.Count == 0) return [];
+
+        var validFilters = filters
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Value))
+            .ToList();
+        if (validFilters.Count == 0) return [];
+
+        var dbKeys = await _db.CategoryAttributes.AsNoTracking()
+            .Select(a => a.AttributeKey)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var keyLookup = new Dictionary<string, string>();
+        foreach (var k in dbKeys)
+        {
+            var norm = NormalizeToAscii(k);
+            keyLookup.TryAdd(norm, k);
+        }
+
+        var result = new List<ResolvedFilter>();
+
+        foreach (var (key, rawVal) in validFilters)
+        {
+            var normalized = NormalizeToAscii(key);
+            if (!keyLookup.TryGetValue(normalized, out var actualKey))
+            {
+                _log.LogWarning("Attribute key '{Key}' (normalized: '{Norm}') not found in DB keys. Skipping.", key, normalized);
+                continue;
+            }
+
+            var val = rawVal!.Trim();
+
+            string op = "=";
+            string valBody = val;
+
+            if (val.StartsWith(">=")) { op = ">="; valBody = val[2..].Trim(); }
+            else if (val.StartsWith("<=")) { op = "<="; valBody = val[2..].Trim(); }
+            else if (val.StartsWith(">")) { op = ">"; valBody = val[1..].Trim(); }
+            else if (val.StartsWith("<")) { op = "<"; valBody = val[1..].Trim(); }
+
+            var parts = valBody.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+
+            var numVals = new List<int>();
+            var textVals = new List<string>();
+            foreach (var p in parts)
+            {
+                if (int.TryParse(p, out var n))
+                    numVals.Add(n);
+                else
+                    textVals.Add(p);
+            }
+
+            result.Add(new ResolvedFilter(actualKey, op, numVals.Count > 0 ? numVals : null, textVals.Count > 0 ? textVals : null));
+            _log.LogInformation("Resolved filter: key={DbKey}, op={Op}, nums={Nums}, texts={Texts}",
+                actualKey, op, string.Join(",", numVals), string.Join(",", textVals));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Given a set of candidate listing IDs and resolved attribute filters,
+    /// returns only those IDs whose attribute values satisfy ALL filters.
+    /// </summary>
+    private async Task<HashSet<Guid>> PostFilterByAttributes(
+        List<Guid> candidateIds, List<ResolvedFilter> filters, CancellationToken ct)
+    {
+        if (candidateIds.Count == 0 || filters.Count == 0)
+            return candidateIds.ToHashSet();
+
+        var conn = _db.Database.GetDbConnection();
+        if (conn.State != System.Data.ConnectionState.Open)
+            await conn.OpenAsync(ct);
+
+        var whereParts = new List<string>();
+        var parms = new List<NpgsqlParameter>();
+
+        parms.Add(new NpgsqlParameter("pub", (int)ListingStatus.Published));
+        parms.Add(new NpgsqlParameter("candidateIds", candidateIds.ToArray()));
+
+        int pIdx = 0;
+        foreach (var f in filters)
+        {
+            var keyParam = $"@fk{pIdx}";
+            parms.Add(new NpgsqlParameter($"fk{pIdx}", f.DbKey));
+
+            var conditions = new List<string>();
+
+            if (f.NumValues is { Count: > 0 })
+            {
+                foreach (var numVal in f.NumValues)
+                {
+                    var vp = $"@fv{pIdx}_{conditions.Count}";
+                    parms.Add(new NpgsqlParameter($"fv{pIdx}_{conditions.Count}", numVal));
+
+                    var numCondition = f.Op switch
+                    {
+                        ">=" => $"(lav.\"ValueInt\" >= {vp} OR (lav.\"ValueText\" ~ '^\\d+$' AND CAST(lav.\"ValueText\" AS INTEGER) >= {vp}))",
+                        "<=" => $"(lav.\"ValueInt\" <= {vp} OR (lav.\"ValueText\" ~ '^\\d+$' AND CAST(lav.\"ValueText\" AS INTEGER) <= {vp}))",
+                        ">" => $"(lav.\"ValueInt\" > {vp} OR (lav.\"ValueText\" ~ '^\\d+$' AND CAST(lav.\"ValueText\" AS INTEGER) > {vp}))",
+                        "<" => $"(lav.\"ValueInt\" < {vp} OR (lav.\"ValueText\" ~ '^\\d+$' AND CAST(lav.\"ValueText\" AS INTEGER) < {vp}))",
+                        _ => $"(lav.\"ValueInt\" = {vp} OR (lav.\"ValueText\" ~ '^\\d+$' AND CAST(lav.\"ValueText\" AS INTEGER) = {vp}))"
+                    };
+                    conditions.Add(numCondition);
+                }
+            }
+
+            if (f.TextValues is { Count: > 0 })
+            {
+                foreach (var txtVal in f.TextValues)
+                {
+                    var vp = $"@fv{pIdx}_{conditions.Count}";
+                    parms.Add(new NpgsqlParameter($"fv{pIdx}_{conditions.Count}", txtVal));
+                    conditions.Add($"(lav.\"ValueText\" IS NOT NULL AND LOWER(lav.\"ValueText\") = LOWER({vp}))");
+                }
+            }
+
+            if (conditions.Count == 0) { pIdx++; continue; }
+
+            whereParts.Add($"""
+                l."Id" IN (
+                    SELECT lav."ListingId"
+                    FROM listing_attribute_values lav
+                    JOIN category_attributes ca ON ca."Id" = lav."CategoryAttributeId"
+                    WHERE ca."AttributeKey" = {keyParam}
+                      AND ({string.Join(" OR ", conditions)})
+                )
+                """);
+
+            pIdx++;
+        }
+
+        if (whereParts.Count == 0) return candidateIds.ToHashSet();
+
+        var sql = $"""
+            SELECT l."Id"
+            FROM listings l
+            WHERE l."Status" = @pub
+              AND l."Id" = ANY(@candidateIds)
+              AND {string.Join("\n  AND ", whereParts)}
+            """;
+
+        _log.LogInformation("Post-filter SQL: {Sql}", sql);
+
+        await using var cmd = (NpgsqlCommand)conn.CreateCommand();
+        cmd.CommandText = sql;
+        foreach (var p in parms) cmd.Parameters.Add(p);
+
+        var passed = new HashSet<Guid>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            passed.Add(reader.GetGuid(0));
+
+        return passed;
+    }
+
+    // ── Vector search ───────────────────────────────────────────────────
+
     private async Task<List<(Guid Id, int Rank)>> GetVectorRankedIdsAsync(
-        string query, Guid? categoryId, Guid? cityId, decimal? minPrice, decimal? maxPrice, CancellationToken ct)
+        string query, Guid? categoryId, Guid? cityId, decimal? minPrice, decimal? maxPrice,
+        CancellationToken ct)
     {
         try
         {
@@ -141,7 +324,7 @@ public sealed class RagSearchService : IRagSearchService
             if (conn.State != System.Data.ConnectionState.Open)
                 await conn.OpenAsync(ct);
 
-            var filterClauses = BuildFilterClauses(categoryId, cityId, minPrice, maxPrice);
+            var filterClauses = BuildBasicFilterClauses(categoryId, cityId, minPrice, maxPrice);
 
             await using var cmd = (NpgsqlCommand)conn.CreateCommand();
             cmd.CommandText = $"""
@@ -175,8 +358,11 @@ public sealed class RagSearchService : IRagSearchService
         }
     }
 
+    // ── Keyword search ──────────────────────────────────────────────────
+
     private async Task<List<(Guid Id, int Rank)>> GetKeywordRankedIdsAsync(
-        string query, Guid? categoryId, Guid? cityId, decimal? minPrice, decimal? maxPrice, CancellationToken ct)
+        string query, Guid? categoryId, Guid? cityId, decimal? minPrice, decimal? maxPrice,
+        CancellationToken ct)
     {
         var tokens = query.Split(new[] { ' ', '\t', '\n', '\r', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(SanitizeLikeToken)
@@ -208,6 +394,8 @@ public sealed class RagSearchService : IRagSearchService
         return ids.Select((id, i) => (id, Rank: i + 1)).ToList();
     }
 
+    // ── Helpers ──────────────────────────────────────────────────────────
+
     private static List<(Guid Id, double Score)> FuseRRF(
         List<(Guid Id, int Rank)> vectorResults,
         List<(Guid Id, int Rank)> keywordResults)
@@ -226,7 +414,7 @@ public sealed class RagSearchService : IRagSearchService
             .ToList();
     }
 
-    private static (string Sql, List<NpgsqlParameter> Params) BuildFilterClauses(
+    private static (string Sql, List<NpgsqlParameter> Params) BuildBasicFilterClauses(
         Guid? categoryId, Guid? cityId, decimal? minPrice, decimal? maxPrice)
     {
         var parts = new List<string>();
@@ -254,6 +442,13 @@ public sealed class RagSearchService : IRagSearchService
         }
 
         return (string.Join("\n", parts), parms);
+    }
+
+    private static string NormalizeToAscii(string input)
+    {
+        return input.ToLowerInvariant()
+            .Replace("ç", "c").Replace("ğ", "g").Replace("ı", "i")
+            .Replace("ö", "o").Replace("ş", "s").Replace("ü", "u");
     }
 
     private static string SanitizeLikeToken(string s) =>

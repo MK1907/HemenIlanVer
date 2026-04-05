@@ -17,7 +17,7 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
     {
         if (!doc.TryGetProperty("bootstrap", out var b) || b.ValueKind != JsonValueKind.Object)
             return;
-        if (!b.TryGetProperty("needed", out var needed) || needed.ValueKind != JsonValueKind.True)
+        if (!IsTruthy(b, "needed"))
             return;
 
         var rootName = GetString(b, "rootName") ?? "Yeni ana kategori";
@@ -68,20 +68,27 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
-        var existingAttrs = await _db.CategoryAttributes
+        var existingAttrCount = await _db.CategoryAttributes
             .Where(a => a.CategoryId == child.Id)
-            .Select(a => a.AttributeKey)
-            .ToListAsync(cancellationToken);
+            .CountAsync(cancellationToken);
 
-        var hasRealAttrs = existingAttrs.Count > 1 || (existingAttrs.Count == 1 && existingAttrs[0] != "aciklama");
-        if (hasRealAttrs)
+        var onlyFallback = existingAttrCount == 1 && await _db.CategoryAttributes
+            .AnyAsync(a => a.CategoryId == child.Id && a.AttributeKey == "aciklama", cancellationToken);
+
+        if (existingAttrCount > 0 && !onlyFallback)
         {
             await tx.CommitAsync(cancellationToken);
             return;
         }
 
-        if (existingAttrs.Count == 1 && existingAttrs[0] == "aciklama")
+        if (onlyFallback)
         {
+            await _db.CategoryAttributeOptions
+                .Where(o => _db.CategoryAttributes
+                    .Where(a => a.CategoryId == child.Id && a.AttributeKey == "aciklama")
+                    .Select(a => a.Id)
+                    .Contains(o.CategoryAttributeId))
+                .ExecuteDeleteAsync(cancellationToken);
             await _db.CategoryAttributes
                 .Where(a => a.CategoryId == child.Id && a.AttributeKey == "aciklama")
                 .ExecuteDeleteAsync(cancellationToken);
@@ -96,12 +103,12 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
             foreach (var el in filtersArr.EnumerateArray())
             {
                 sortOrder++;
-                var keyRaw = GetString(el, "key") ?? GetString(el, "attributeKey");
+                var keyRaw = GetString(el, "key") ?? GetString(el, "attributeKey") ?? GetString(el, "name");
                 if (string.IsNullOrWhiteSpace(keyRaw)) continue;
                 var key = CategorySlugHelper.SanitizeAttributeKey(keyRaw);
-                var display = GetString(el, "displayName") ?? key;
-                var dtStr = GetString(el, "dataType") ?? "String";
-                var req = el.TryGetProperty("required", out var rq) && rq.ValueKind == JsonValueKind.True;
+                var display = GetString(el, "displayName") ?? GetString(el, "display_name") ?? GetString(el, "label") ?? key;
+                var dtStr = GetString(el, "dataType") ?? GetString(el, "data_type") ?? GetString(el, "type") ?? "String";
+                var req = IsTruthy(el, "required") || IsTruthy(el, "isRequired");
                 if (!Enum.TryParse<AttributeDataType>(dtStr, true, out var dt))
                     dt = AttributeDataType.String;
 
@@ -111,7 +118,7 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
                         dt = AttributeDataType.String;
                 }
 
-                var parentKeyRaw = GetString(el, "parentKey");
+                var parentKeyRaw = GetString(el, "parentKey") ?? GetString(el, "parent_key");
                 Guid? parentAttrId = null;
                 if (!string.IsNullOrWhiteSpace(parentKeyRaw))
                 {
@@ -145,10 +152,10 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
             foreach (var el in filtersArr.EnumerateArray())
             {
                 sortOrder++;
-                var keyRaw = GetString(el, "key") ?? GetString(el, "attributeKey");
+                var keyRaw = GetString(el, "key") ?? GetString(el, "attributeKey") ?? GetString(el, "name");
                 if (string.IsNullOrWhiteSpace(keyRaw)) continue;
                 var key = CategorySlugHelper.SanitizeAttributeKey(keyRaw);
-                var dtStr = GetString(el, "dataType") ?? "String";
+                var dtStr = GetString(el, "dataType") ?? GetString(el, "data_type") ?? GetString(el, "type") ?? "String";
                 if (!Enum.TryParse<AttributeDataType>(dtStr, true, out var dt))
                     dt = AttributeDataType.String;
                 if (dt == AttributeDataType.Enum)
@@ -161,7 +168,7 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
                 if (dt != AttributeDataType.Enum) continue;
                 if (!el.TryGetProperty("options", out var optArr) || optArr.ValueKind != JsonValueKind.Array) continue;
 
-                var parentKeyRaw = GetString(el, "parentKey");
+                var parentKeyRaw = GetString(el, "parentKey") ?? GetString(el, "parent_key");
                 Guid? parentAttrIdForLookup = null;
                 if (!string.IsNullOrWhiteSpace(parentKeyRaw))
                 {
@@ -179,12 +186,12 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
                 var oi = 0;
                 foreach (var opt in optArr.EnumerateArray())
                 {
-                    var vk = GetString(opt, "valueKey") ?? GetString(opt, "key");
-                    var lbl = GetString(opt, "label") ?? vk;
+                    var vk = GetString(opt, "valueKey") ?? GetString(opt, "key") ?? GetString(opt, "value");
+                    var lbl = GetString(opt, "label") ?? GetString(opt, "name") ?? vk;
                     if (string.IsNullOrWhiteSpace(vk)) continue;
 
                     Guid? parentOptId = null;
-                    var parentValue = GetString(opt, "parentValue");
+                    var parentValue = GetString(opt, "parentValue") ?? GetString(opt, "parent_value");
                     if (!string.IsNullOrWhiteSpace(parentValue) && parentOptions.Count > 0)
                     {
                         var po = parentOptions.FirstOrDefault(p =>
@@ -223,6 +230,13 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
 
         await _db.SaveChangesAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
+    }
+
+    private static bool IsTruthy(JsonElement el, string name)
+    {
+        if (!el.TryGetProperty(name, out var p)) return false;
+        return p.ValueKind == JsonValueKind.True
+            || (p.ValueKind == JsonValueKind.String && string.Equals(p.GetString(), "true", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? GetString(JsonElement el, string name) =>

@@ -10,6 +10,7 @@ public interface IRagSearchService
         Guid? cityId,
         decimal? minPrice,
         decimal? maxPrice,
+        IReadOnlyDictionary<string, string?>? attributeFilters,
         int page,
         int pageSize,
         CancellationToken ct = default);

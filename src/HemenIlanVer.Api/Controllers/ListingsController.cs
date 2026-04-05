@@ -1,5 +1,6 @@
 using HemenIlanVer.Application.Abstractions;
 using HemenIlanVer.Api.Extensions;
+using HemenIlanVer.Contracts.Ai;
 using HemenIlanVer.Contracts.Listings;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,12 +14,18 @@ public sealed class ListingsController : ControllerBase
     private readonly IListingService _listings;
     private readonly IRagSearchService _rag;
     private readonly IListingIndexService _indexer;
+    private readonly IAiSearchExtractionService _searchExtractor;
 
-    public ListingsController(IListingService listings, IRagSearchService rag, IListingIndexService indexer)
+    public ListingsController(
+        IListingService listings,
+        IRagSearchService rag,
+        IListingIndexService indexer,
+        IAiSearchExtractionService searchExtractor)
     {
         _listings = listings;
         _rag = rag;
         _indexer = indexer;
+        _searchExtractor = searchExtractor;
     }
 
     [HttpGet]
@@ -39,7 +46,20 @@ public sealed class ListingsController : ControllerBase
     {
         if (!string.IsNullOrWhiteSpace(q) && searchMode is null or "hybrid" or "vector")
         {
-            var result = await _rag.HybridSearchAsync(q, categoryId, cityId, minPrice, maxPrice, page, pageSize, ct);
+            Guid? userId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null;
+            var extraction = await _searchExtractor.ExtractAsync(
+                userId, new SearchExtractRequest(q, categoryId), ct);
+
+            var effectiveCat = extraction.CategoryId ?? categoryId;
+            var effectiveCity = extraction.CityId ?? cityId;
+            var effectiveMinPrice = extraction.MinPrice ?? minPrice;
+            var effectiveMaxPrice = extraction.MaxPrice ?? maxPrice;
+            var attrFilters = extraction.Filters.Count > 0 ? extraction.Filters : null;
+
+            var result = await _rag.HybridSearchAsync(
+                q, effectiveCat, effectiveCity,
+                effectiveMinPrice, effectiveMaxPrice,
+                attrFilters, page, pageSize, ct);
             return Ok(result);
         }
 

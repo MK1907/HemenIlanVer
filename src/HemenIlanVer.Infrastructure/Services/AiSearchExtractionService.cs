@@ -87,12 +87,45 @@ public sealed class AiSearchExtractionService : IAiSearchExtractionService
             .Take(40)
             .ToListAsync(ct);
 
-        var system = $"""
-            Sen ilan arama filtresi çıkaran yardımcısın. SADECE JSON üret.
-            Kategoriler: {JsonSerializer.Serialize(cats)}
-            Çıktı: intent (search), categoryId (uuid|null), filters (object: key->string), cityName, minPrice, maxPrice, sortPreference (price_asc|price_desc|km_asc|date_desc|null), confidence (0-1)
-            filters anahtarları: model (ör. Egea, Corolla), gear (Manuel|Otomatik), brand, fuel vb. Metin araması gerekmeyen yapılandırılmış alanları buraya koy.
-            Kurallar: "1 milyon altı" / "bir milyon altı" -> maxPrice 1000000. Şehir adını cityName olarak ver (ör. İstanbul). Düşük km isteği -> sortPreference km_asc.
+        var attrKeys = await _db.Set<CategoryAttribute>().AsNoTracking()
+            .Select(a => new { a.AttributeKey, a.DisplayName })
+            .Distinct()
+            .Take(80)
+            .ToListAsync(ct);
+
+        var catsJson = JsonSerializer.Serialize(cats);
+        var attrKeysJson = JsonSerializer.Serialize(attrKeys);
+
+        var system = "Sen ilan arama filtresi çıkaran yardımcısın. SADECE JSON üret.\n"
+            + "Kategoriler: " + catsJson + "\n"
+            + "Bilinen özellik anahtarları: " + attrKeysJson + "\n\n"
+            + """
+            Çıktı formatı:
+            { "intent": "search", "categoryId": "uuid veya null", "filters": { "anahtar": "değer veya değerler" }, "cityName": "şehir adı veya null", "minPrice": null, "maxPrice": null, "sortPreference": "price_asc|price_desc|km_asc|date_desc|null", "confidence": 0.0-1.0 }
+
+            FILTERS KURALLARI (ÇOK ÖNEMLİ):
+            - filters key'leri MUTLAKA yukarıdaki "Bilinen özellik anahtarları" listesindeki AttributeKey değerlerinden biri olmalı. Kendi key icat etme!
+            - Değerler karşılaştırma operatörleri içerebilir:
+              * ">=2017" → 2017 ve üstü
+              * "<=50000" → 50000 ve altı
+              * ">2015" → 2015'ten büyük
+              * "<100000" → 100000'den az
+              * "Benzin" → tam eşleşme
+            - Birden fazla alternatif değer varsa (OR): "2016|2017" şeklinde pipe ile ayır.
+              Örnek: "2016 yada 2017 model" → filters key=yıl, value="2016|2017"
+              Örnek: "Benzin veya Dizel" → filters key=yakıt tipi anahtarı, value="Benzin|Dizel"
+            - "X ve üstü / üzeri / sonrası" → ">=X"
+            - "X ve altı / altında" → "<=X"
+            - "X'ten büyük / yüksek" → ">X"
+            - "X'ten az / düşük / küçük" → "<X"
+            - Tam eşleşme gereken alanlar (marka, model, renk, vites) için operatör kullanma, direkt değer yaz.
+            - Sayısal alanlar: yıl, km, motor gücü vs. Bunlarda karşılaştırma operatörü veya exact value kullan.
+
+            DİĞER KURALLAR:
+            - "1 milyon altı" / "bir milyon altı" → maxPrice: 1000000
+            - Şehir adını cityName olarak ver (ör. İstanbul).
+            - Düşük km isteği → sortPreference: "km_asc"
+            - Kullanıcı "X arıyorum / istiyorum" derse, X'in tüm özelliklerini çıkar.
             """;
 
         var body = new
@@ -127,12 +160,12 @@ public sealed class AiSearchExtractionService : IAiSearchExtractionService
             catId = gid;
 
         decimal? min = null, max = null;
-        if (doc.TryGetProperty("minPrice", out var minP) && minP.TryGetDecimal(out var minD)) min = minD;
-        if (doc.TryGetProperty("maxPrice", out var maxP) && maxP.TryGetDecimal(out var maxD)) max = maxD;
+        if (doc.TryGetProperty("minPrice", out var minP) && minP.ValueKind == JsonValueKind.Number && minP.TryGetDecimal(out var minD)) min = minD;
+        if (doc.TryGetProperty("maxPrice", out var maxP) && maxP.ValueKind == JsonValueKind.Number && maxP.TryGetDecimal(out var maxD)) max = maxD;
 
-        var city = doc.TryGetProperty("cityName", out var cn) ? cn.GetString() : null;
-        var sort = doc.TryGetProperty("sortPreference", out var sp) ? sp.GetString() : null;
-        var conf = doc.TryGetProperty("confidence", out var cf) && cf.TryGetDouble(out var cfd) ? cfd : 0.7;
+        var city = doc.TryGetProperty("cityName", out var cn) && cn.ValueKind == JsonValueKind.String ? cn.GetString() : null;
+        var sort = doc.TryGetProperty("sortPreference", out var sp) && sp.ValueKind == JsonValueKind.String ? sp.GetString() : null;
+        var conf = doc.TryGetProperty("confidence", out var cf) && cf.ValueKind == JsonValueKind.Number && cf.TryGetDouble(out var cfd) ? cfd : 0.7;
 
         return new SearchExtractResponse(
             Guid.Empty,

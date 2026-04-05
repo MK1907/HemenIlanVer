@@ -182,6 +182,14 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             ?? throw new InvalidOperationException("Boş içerik");
 
         var doc = JsonDocument.Parse(content).RootElement;
+
+        var hasBootstrap = doc.TryGetProperty("bootstrap", out var bCheck);
+        var bootNeeded = hasBootstrap && bCheck.TryGetProperty("needed", out var nCheck) ? nCheck.GetRawText() : "N/A";
+        var bootFilterCount = hasBootstrap && bCheck.TryGetProperty("filters", out var fCheck) && fCheck.ValueKind == JsonValueKind.Array ? fCheck.GetArrayLength() : 0;
+        _logger.LogInformation("AI response: hasBootstrap={Has}, needed={Needed}, filterCount={FC}, rootSlug={RS}",
+            hasBootstrap, bootNeeded, bootFilterCount,
+            doc.TryGetProperty("rootSlug", out var rsLog) ? rsLog.GetRawText() : "N/A");
+
         await _categoryBootstrap.ApplyFromDetectDocumentAsync(doc, ct);
 
         roots = await _db.Categories.AsNoTracking()
@@ -212,23 +220,23 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
 
         if (rootCat is null)
         {
-            _logger.LogWarning("rootSlug '{Slug}' (normalized: '{Norm}') DB'de bulunamadı, bootstrap ile oluşturuluyor.", rootSlugRaw, rootSlugNorm);
+            _logger.LogWarning("rootSlug '{Slug}' (normalized: '{Norm}') DB'de bulunamadı, force bootstrap çalıştırılıyor.", rootSlugRaw, rootSlugNorm);
 
-            var forceBootstrapData = new Dictionary<string, object>
-            {
-                ["bootstrap"] = new Dictionary<string, object>
-                {
-                    ["needed"] = true,
-                    ["rootName"] = doc.TryGetProperty("bootstrap", out var bDoc) && bDoc.TryGetProperty("rootName", out var rn) && rn.ValueKind == JsonValueKind.String ? rn.GetString()! : rootSlugRaw!,
-                    ["rootSlug"] = rootSlugRaw!,
-                    ["childName"] = doc.TryGetProperty("bootstrap", out var bDoc2) && bDoc2.TryGetProperty("childName", out var cn) && cn.ValueKind == JsonValueKind.String ? cn.GetString()! : (!string.IsNullOrEmpty(childSlugRaw) ? childSlugRaw : "Genel"),
-                    ["childSlug"] = doc.TryGetProperty("bootstrap", out var bDoc3) && bDoc3.TryGetProperty("childSlug", out var csb) && csb.ValueKind == JsonValueKind.String ? csb.GetString()! : (!string.IsNullOrEmpty(childSlugRaw) ? childSlugRaw : "genel"),
-                    ["filters"] = doc.TryGetProperty("bootstrap", out var bDoc4) && bDoc4.TryGetProperty("filters", out var origFilters) && origFilters.ValueKind == JsonValueKind.Array
-                        ? (object)origFilters
-                        : Array.Empty<object>()
-                }
-            };
-            var forceJson = JsonSerializer.Serialize(forceBootstrapData);
+            string filtersJson = "[]";
+            if (doc.TryGetProperty("bootstrap", out var origBoot) && origBoot.TryGetProperty("filters", out var origF) && origF.ValueKind == JsonValueKind.Array)
+                filtersJson = origF.GetRawText();
+
+            var rootNameStr = doc.TryGetProperty("bootstrap", out var bn1) && bn1.TryGetProperty("rootName", out var rn1) && rn1.ValueKind == JsonValueKind.String ? rn1.GetString()! : rootSlugRaw!;
+            var childNameStr = doc.TryGetProperty("bootstrap", out var bn2) && bn2.TryGetProperty("childName", out var cn1) && cn1.ValueKind == JsonValueKind.String ? cn1.GetString()! : (!string.IsNullOrEmpty(childSlugRaw) ? childSlugRaw : "Genel");
+            var childSlugStr = doc.TryGetProperty("bootstrap", out var bn3) && bn3.TryGetProperty("childSlug", out var cs1) && cs1.ValueKind == JsonValueKind.String ? cs1.GetString()! : (!string.IsNullOrEmpty(childSlugRaw) ? childSlugRaw : "genel");
+
+            var forceJson = "{\"bootstrap\":{\"needed\":true,"
+                + "\"rootName\":" + JsonSerializer.Serialize(rootNameStr) + ","
+                + "\"rootSlug\":" + JsonSerializer.Serialize(rootSlugRaw!) + ","
+                + "\"childName\":" + JsonSerializer.Serialize(childNameStr) + ","
+                + "\"childSlug\":" + JsonSerializer.Serialize(childSlugStr) + ","
+                + "\"filters\":" + filtersJson + "}}";
+            _logger.LogInformation("Force bootstrap JSON (filters count): {Count}", filtersJson == "[]" ? 0 : filtersJson.Length);
             var forceDoc = JsonDocument.Parse(forceJson).RootElement;
             await _categoryBootstrap.ApplyFromDetectDocumentAsync(forceDoc, ct);
 
