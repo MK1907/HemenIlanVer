@@ -33,9 +33,7 @@ export function CreateListingPage() {
   const [tree, setTree] = useState<Cat[]>([]);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [attrs, setAttrs] = useState<Attr[]>([]);
-  const [prompt, setPrompt] = useState(
-    'VIP Özel Ders Öğretmeninden LGS-YKS Türkçe & Edebiyat Özel Ders'
-  );
+  const [prompt, setPrompt] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState<string>('');
@@ -43,8 +41,9 @@ export function CreateListingPage() {
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [detect, setDetect] = useState<DetectResult | null>(null);
-  const [partialSuggestions, setPartialSuggestions] = useState<string[]>([]);
-  const [partialSuggestLoading, setPartialSuggestLoading] = useState(false);
+
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
 
   function refreshCategories() {
     api.get<Cat[]>('/api/categories').then((r) => setTree(r.data));
@@ -59,41 +58,52 @@ export function CreateListingPage() {
       setAttrs([]);
       return;
     }
-    api.get<{ attributes: Attr[] }>(`/api/categories/${categoryId}/attributes`).then((r) => setAttrs(r.data.attributes));
+    api
+      .get<{ attributes: Attr[] }>(`/api/categories/${categoryId}/attributes`)
+      .then((r) => setAttrs(r.data.attributes));
   }, [categoryId]);
 
+  /* ── Yazarken AI önerileri (debounce 600ms) ── */
   useEffect(() => {
     const trimmed = prompt.trim();
     if (trimmed.length < 2) {
-      setPartialSuggestions([]);
-      setPartialSuggestLoading(false);
+      setSuggestions([]);
+      setSuggestLoading(false);
       return;
     }
 
     const ac = new AbortController();
     const timer = window.setTimeout(() => {
-      setPartialSuggestLoading(true);
+      setSuggestLoading(true);
       api
-        .post<PartialSuggestResponse>('/api/ai/suggest-partial-listing', { partialText: trimmed }, { signal: ac.signal })
-        .then((res) => {
-          setPartialSuggestions(res.data.suggestions ?? []);
-        })
+        .post<PartialSuggestResponse>(
+          '/api/ai/suggest-partial-listing',
+          { partialText: trimmed },
+          { signal: ac.signal },
+        )
+        .then((res) => setSuggestions(res.data.suggestions ?? []))
         .catch((err: unknown) => {
           if (axios.isAxiosError(err) && err.code === 'ERR_CANCELED') return;
-          setPartialSuggestions([]);
+          setSuggestions([]);
         })
         .finally(() => {
-          if (!ac.signal.aborted) setPartialSuggestLoading(false);
+          if (!ac.signal.aborted) setSuggestLoading(false);
         });
-    }, 450);
+    }, 600);
 
     return () => {
       clearTimeout(timer);
       ac.abort();
-      setPartialSuggestLoading(false);
+      setSuggestLoading(false);
     };
   }, [prompt]);
 
+  function pickSuggestion(text: string) {
+    setPrompt(text);
+    setSuggestions([]);
+  }
+
+  /* ── AI ile İşle → kategori + filtreler ── */
   async function runDetect(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -151,122 +161,159 @@ export function CreateListingPage() {
     }
   }
 
+  const showSuggestions = suggestLoading || suggestions.length > 0;
+
   return (
     <div className="create-flow">
+      {/* ─── Üst kart: yazarken öneriler + AI ile İşle ─── */}
       <div className="card">
-        <h2>Hızlı ilan — AI kategori</h2>
+        <h2>Hızlı İlan Oluştur</h2>
         <p className="muted">
-          Ne sattığınızı veya kiraladığınızı yazın. Yapay zeka uygun ana/alt kategoriyi ve gerekirse yeni filtre alanlarını
-          veritabanına ekler; alt kategoriyi ve form değerlerini siz seçip doldurursunuz.
+          İlanınızı kısaca tanımlayın; yapay zeka size olasılıklar sunar. Birini seçip
+          &laquo;AI ile İşle&raquo; dediğinizde kategori ve filtre alanları otomatik gelir.
         </p>
+
         <form className="form" onSubmit={runDetect}>
           <label>
-            Ne satıyor / kiralıyorsunuz? (doğal dil)
-            <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={6} />
+            Ne satıyor / kiralıyorsunuz?
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              rows={3}
+              placeholder="Örn: 2012 model Fiat Egea, toptan gıda ürünleri, kiralık 3+1 daire…"
+            />
           </label>
-          {(partialSuggestLoading || partialSuggestions.length > 0) && (
+
+          {showSuggestions && (
             <div className="suggestion-chips" aria-live="polite">
-              <p className="muted small suggestion-chips__title">
-                {partialSuggestLoading ? 'Olası yönler düşünülüyor…' : 'Yazdıklarınıza göre olası yönler (tıklayınca metne eklenir):'}
-              </p>
-              {!partialSuggestLoading && partialSuggestions.length > 0 && (
-                <div className="suggestion-chips__list">
-                  {partialSuggestions.map((s, i) => (
-                    <button
-                      key={`${i}-${s.slice(0, 24)}`}
-                      type="button"
-                      className="chip"
-                      onClick={() =>
-                        setPrompt((prev) => {
-                          const p = prev.trimEnd();
-                          return p ? `${p} ${s}` : s;
-                        })
-                      }
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+              {suggestLoading ? (
+                <p className="muted small suggestion-chips__title">Olası ilanlar düşünülüyor…</p>
+              ) : (
+                <>
+                  <p className="muted small suggestion-chips__title">Bunu mu demek istediniz?</p>
+                  <div className="suggestion-chips__list">
+                    {suggestions.map((s, i) => (
+                      <button
+                        key={`${i}-${s.slice(0, 24)}`}
+                        type="button"
+                        className="chip"
+                        onClick={() => pickSuggestion(s)}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           )}
+
           <button className="btn primary" type="submit" disabled={loading || !prompt.trim()}>
-            {loading ? 'İşleniyor…' : 'Kategori ve filtreleri bul (AI)'}
+            {loading ? 'İşleniyor…' : 'AI ile İşle'}
           </button>
         </form>
+      </div>
 
-        {detect && (
-          <div className="muted" style={{ marginTop: '1rem' }}>
-            <p>
-              {detect.rootName} ana kategorisi · Güven: {(detect.confidence * 100).toFixed(0)}%
-              {detect.usedMockProvider ? ' (mock)' : ''}
-            </p>
-            <p className="small">Alt kategoriler: {detect.subCategories.map((s) => s.name).join(', ') || '—'}</p>
+      {/* ─── Alt kart: AI sonucu + kategori seçimi + form ─── */}
+      {detect && (
+        <div className="card">
+          <div className="detect-summary">
+            <h3>{detect.rootName}</h3>
+            <span className="badge">Güven: {(detect.confidence * 100).toFixed(0)}%</span>
           </div>
-        )}
 
-        <form className="form" style={{ marginTop: '1.25rem' }}>
-          <label>
-            Alt kategori (form alanları buna göre yüklenir)
-            <select value={categoryId ?? ''} onChange={(e) => setCategoryId(e.target.value || null)}>
-              <option value="">Seçin</option>
-              {tree.map((root) => (
-                <optgroup key={root.id} label={root.name}>
-                  {(root.children ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-          <p className="muted small">AI net alt kategori önerdiyse seçim otomatik gelir; değiştirmek serbest.</p>
-        </form>
-      </div>
-
-      <div className="card">
-        <h3>Form</h3>
-        <p className="muted small">İlan tipi: {listingType}</p>
-        <form className="form" onSubmit={publish}>
-          <label>
-            Başlık
-            <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} />
-          </label>
-          <label>
-            Açıklama
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={6} />
-          </label>
-          <label>
-            Fiyat (TRY)
-            <input value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="950000" />
-          </label>
-          {attrs.map((a) => (
-            <label key={a.id}>
-              {a.displayName}
-              {a.options.length > 0 ? (
-                <select value={attrValues[a.attributeKey] ?? ''} onChange={(e) => setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })}>
-                  <option value="">—</option>
-                  {a.options.map((o) => (
-                    <option key={o.valueKey} value={o.valueKey}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={attrValues[a.attributeKey] ?? ''}
-                  onChange={(e) => setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })}
-                />
-              )}
+          <form className="form" style={{ marginTop: '0.75rem' }}>
+            <label>
+              Alt kategori
+              <select value={categoryId ?? ''} onChange={(e) => setCategoryId(e.target.value || null)}>
+                <option value="">Seçin</option>
+                {tree.map((root) => (
+                  <optgroup key={root.id} label={root.name}>
+                    {(root.children ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
             </label>
-          ))}
-          <button className="btn primary" type="submit" disabled={loading || !categoryId}>
-            Yayına gönder
-          </button>
-        </form>
-        <p className="muted small">Şehir/ilçe MVP’de örnek İstanbul/Ataşehir sabit; prod’da seçim eklenir.</p>
-      </div>
+            {detect.subCategories.length > 0 && (
+              <p className="muted small">
+                Önerilen alt kategoriler: {detect.subCategories.map((s) => s.name).join(', ')}
+              </p>
+            )}
+          </form>
+
+          {/* Filtre alanları */}
+          {attrs.length > 0 && (
+            <div className="filter-section">
+              <h4>Filtre Alanları</h4>
+              <div className="filter-grid">
+                {attrs.map((a) => (
+                  <label key={a.id} className="filter-item">
+                    <span className="filter-item__label">
+                      {a.displayName}
+                      {a.isRequired && <span className="required-star">*</span>}
+                    </span>
+                    {a.options.length > 0 ? (
+                      <select
+                        value={attrValues[a.attributeKey] ?? ''}
+                        onChange={(e) =>
+                          setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
+                        }
+                      >
+                        <option value="">Seçiniz</option>
+                        {a.options.map((o) => (
+                          <option key={o.valueKey} value={o.valueKey}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        value={attrValues[a.attributeKey] ?? ''}
+                        onChange={(e) =>
+                          setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
+                        }
+                        placeholder={a.displayName}
+                      />
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* İlan detayları */}
+          <form className="form" onSubmit={publish} style={{ marginTop: '1rem' }}>
+            <h4>İlan Detayları</h4>
+            <label>
+              Başlık
+              <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} />
+            </label>
+            <label>
+              Açıklama
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
+            </label>
+            <label>
+              Fiyat (TRY)
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                inputMode="decimal"
+                placeholder="950000"
+              />
+            </label>
+            <button className="btn primary" type="submit" disabled={loading || !categoryId}>
+              Yayına Gönder
+            </button>
+          </form>
+          <p className="muted small" style={{ marginTop: '0.5rem' }}>
+            Şehir/ilçe MVP'de örnek İstanbul/Ataşehir sabit; prod'da seçim eklenir.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

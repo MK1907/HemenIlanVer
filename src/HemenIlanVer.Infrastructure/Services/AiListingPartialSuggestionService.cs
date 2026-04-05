@@ -35,9 +35,14 @@ public sealed class AiListingPartialSuggestionService : IAiListingPartialSuggest
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _openAi.ApiKey);
 
         const string system =
-            "Sen Türkiye ilan siteleri için yardımcısın. Kullanıcı yeni ilan metnini yazarken kısa, yarım veya belirsiz bir parça gönderiyor.\n" +
-            "Görev: Bu metne göre kullanıcının ne satmak veya kiralamak isteyebileceğine dair KISA Türkçe olasılıklar üret.\n" +
-            "Örnekler: \"TOPTAN\" → toptan gıda, toptan tekstil, horeca malzemesi toptan; \"2012\" → 2012 model otomobil, 2012 yapım konut, ikinci el telefon (2012 civarı model).\n" +
+            "Sen Türkiye ilan siteleri için bir otomatik tamamlama yardımcısısın.\n" +
+            "Kullanıcı yeni ilan oluştururken kısa / yarım / belirsiz bir metin giriyor.\n" +
+            "Görev: Bu metni TAMAMLAYAN, kullanıcının ilanını tam tanımlayan kısa Türkçe cümleler üret.\n" +
+            "Her öneri, kullanıcının yazdığının yerine geçecek bağımsız bir ilan açıklaması olmalı.\n" +
+            "Örnekler:\n" +
+            "  \"TOPTAN\" → [\"Toptan gıda ürünleri satışı\", \"Toptan tekstil malzemeleri\", \"Toptan kozmetik ürünleri\", \"Toptan ambalaj malzemesi\", \"Toptan temizlik ürünleri\"]\n" +
+            "  \"2012\" → [\"2012 model Fiat Egea Sedan\", \"2012 model Toyota Corolla\", \"2012 yapımı 3+1 daire\", \"2012 model Honda Civic\"]\n" +
+            "  \"kira\" → [\"Kiralık 2+1 daire İstanbul\", \"Kiralık dükkan / ofis\", \"Kiralık müstakil ev\"]\n" +
             "Çeşitli ve somut ol; tekrar etme. SADECE geçerli JSON: {\"suggestions\":[\"...\",\"...\"]} — 4 ile 8 arası öğe, her biri kısa tek satır.";
 
         var body = new
