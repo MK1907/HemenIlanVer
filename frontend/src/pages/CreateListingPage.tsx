@@ -23,6 +23,10 @@ type DetectResult = {
   suggestedLeafCategoryId: string | null;
   confidence: number;
   usedMockProvider: boolean;
+  suggestedTitle: string | null;
+  suggestedDescription: string | null;
+  suggestedPrice: number | null;
+  suggestedAttributeValues: Record<string, string> | null;
 };
 
 type PartialSuggestResponse = { traceId: string; suggestions: string[] };
@@ -103,16 +107,23 @@ export function CreateListingPage() {
     setSuggestions([]);
   }
 
-  /* ── AI ile İşle → kategori + filtreler ── */
+  /* ── AI ile İşle → kategori + filtreler + otomatik doldurma ── */
   async function runDetect(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
+    setSuggestions([]);
     try {
       const { data } = await api.post<DetectResult>('/api/ai/detect-listing-category', { prompt });
       setDetect(data);
       refreshCategories();
+
       if (data.suggestedLeafCategoryId) setCategoryId(data.suggestedLeafCategoryId);
       else setCategoryId(null);
+
+      if (data.suggestedTitle) setTitle(data.suggestedTitle);
+      if (data.suggestedDescription) setDescription(data.suggestedDescription);
+      if (data.suggestedPrice) setPrice(String(data.suggestedPrice));
+      if (data.suggestedAttributeValues) setAttrValues(data.suggestedAttributeValues);
     } finally {
       setLoading(false);
     }
@@ -249,38 +260,43 @@ export function CreateListingPage() {
           {attrs.length > 0 && (
             <div className="filter-section">
               <h4>Filtre Alanları</h4>
+              <p className="muted small">AI tarafından doldurulan alanlar yeşil kenarlıdır; istediğinizi değiştirebilirsiniz.</p>
               <div className="filter-grid">
-                {attrs.map((a) => (
-                  <label key={a.id} className="filter-item">
-                    <span className="filter-item__label">
-                      {a.displayName}
-                      {a.isRequired && <span className="required-star">*</span>}
-                    </span>
-                    {a.options.length > 0 ? (
-                      <select
-                        value={attrValues[a.attributeKey] ?? ''}
-                        onChange={(e) =>
-                          setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
-                        }
-                      >
-                        <option value="">Seçiniz</option>
-                        {a.options.map((o) => (
-                          <option key={o.valueKey} value={o.valueKey}>
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        value={attrValues[a.attributeKey] ?? ''}
-                        onChange={(e) =>
-                          setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
-                        }
-                        placeholder={a.displayName}
-                      />
-                    )}
-                  </label>
-                ))}
+                {attrs.map((a) => {
+                  const val = attrValues[a.attributeKey] ?? '';
+                  const filled = Boolean(val);
+                  return (
+                    <label key={a.id} className={`filter-item${filled ? ' ai-filled' : ''}`}>
+                      <span className="filter-item__label">
+                        {a.displayName}
+                        {a.isRequired && <span className="required-star">*</span>}
+                      </span>
+                      {a.options.length > 0 ? (
+                        <select
+                          value={val}
+                          onChange={(e) =>
+                            setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
+                          }
+                        >
+                          <option value="">Seçiniz</option>
+                          {a.options.map((o) => (
+                            <option key={o.valueKey} value={o.valueKey}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          value={val}
+                          onChange={(e) =>
+                            setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
+                          }
+                          placeholder={a.displayName}
+                        />
+                      )}
+                    </label>
+                  );
+                })}
               </div>
             </div>
           )}

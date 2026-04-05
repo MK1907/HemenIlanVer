@@ -909,6 +909,12 @@ a {
   margin-left: 2px;
 }
 
+.filter-item.ai-filled select,
+.filter-item.ai-filled input {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 1px #22c55e33;
+}
+
 .suggestion-chips__list {
   display: flex;
   flex-wrap: wrap;

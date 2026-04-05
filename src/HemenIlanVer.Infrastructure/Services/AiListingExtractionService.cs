@@ -157,6 +157,24 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             if (match is not null) leafId = match.Id;
         }
 
+        string? sugTitle = null;
+        string? sugDesc = null;
+        decimal? sugPrice = null;
+        IReadOnlyDictionary<string, string>? sugAttrs = null;
+
+        if (leafId is not null)
+        {
+            try
+            {
+                (sugTitle, sugDesc, sugPrice, sugAttrs) =
+                    await ExtractAttributeValuesAsync(client, prompt, leafId.Value, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "AI attribute değer çıkarma başarısız; kategori tespiti yine döner.");
+            }
+        }
+
         return new ListingCategoryDetectResponse(
             traceId,
             rootCat.Id,
@@ -164,6 +182,90 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             subs,
             leafId,
             conf,
-            false);
+            false,
+            sugTitle,
+            sugDesc,
+            sugPrice,
+            sugAttrs);
+    }
+
+    private async Task<(string? Title, string? Description, decimal? Price, IReadOnlyDictionary<string, string>? AttrValues)>
+        ExtractAttributeValuesAsync(HttpClient client, string? prompt, Guid leafCategoryId, CancellationToken ct)
+    {
+        var attrs = await _db.CategoryAttributes.AsNoTracking()
+            .Include(x => x.Options)
+            .Where(x => x.CategoryId == leafCategoryId)
+            .OrderBy(x => x.SortOrder)
+            .ToListAsync(ct);
+
+        if (attrs.Count == 0)
+            return (null, null, null, null);
+
+        var attrSpec = attrs.Select(a => new
+        {
+            key = a.AttributeKey,
+            displayName = a.DisplayName,
+            dataType = a.DataType.ToString(),
+            required = a.IsRequired,
+            options = a.Options.OrderBy(o => o.SortOrder).Select(o => new { o.ValueKey, o.Label }).ToList()
+        }).ToList();
+
+        var system =
+            "Sen ilan metni ayrıştırıcısın. Kullanıcının yazdığı metne göre aşağıdaki alan değerlerini çıkar.\n" +
+            "Alanlar: " + JsonSerializer.Serialize(attrSpec) + "\n" +
+            "Kurallar:\n" +
+            "- Enum tipli alanlar için MUTLAKA options içindeki valueKey değerlerinden birini seç.\n" +
+            "- Int / Decimal / Money alanları sayı olarak ver.\n" +
+            "- Bool alanları true/false olarak ver.\n" +
+            "- Metinden çıkaramadığın alanları atla (JSON'a koyma).\n" +
+            "- Ayrıca şunları çıkar: suggestedTitle (kısa ilan başlığı), suggestedDescription (2-3 cümle açıklama), suggestedPrice (TRY cinsinden, null olabilir).\n" +
+            "SADECE geçerli JSON: {\"suggestedTitle\":\"...\",\"suggestedDescription\":\"...\",\"suggestedPrice\":null,\"attributes\":{\"key\":\"value\",...}}";
+
+        var body = new
+        {
+            model = _openAi.Model,
+            response_format = new { type = "json_object" },
+            messages = new object[]
+            {
+                new { role = "system", content = system },
+                new { role = "user", content = prompt ?? "" }
+            }
+        };
+
+        using var resp = await client.PostAsJsonAsync("chat/completions", body, ct);
+        var raw = await resp.Content.ReadAsStringAsync(ct);
+        OpenAiErrorMapper.EnsureSuccess(resp, raw);
+
+        var root = JsonDocument.Parse(raw).RootElement;
+        var content = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "{}";
+        var doc = JsonDocument.Parse(content).RootElement;
+
+        var title = doc.TryGetProperty("suggestedTitle", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+        var desc = doc.TryGetProperty("suggestedDescription", out var sd) && sd.ValueKind == JsonValueKind.String ? sd.GetString() : null;
+        decimal? price = null;
+        if (doc.TryGetProperty("suggestedPrice", out var sp))
+        {
+            if (sp.ValueKind == JsonValueKind.Number && sp.TryGetDecimal(out var d)) price = d;
+        }
+
+        var values = new Dictionary<string, string>();
+        if (doc.TryGetProperty("attributes", out var attrObj) && attrObj.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var prop in attrObj.EnumerateObject())
+            {
+                var val = prop.Value.ValueKind switch
+                {
+                    JsonValueKind.String => prop.Value.GetString(),
+                    JsonValueKind.Number => prop.Value.GetRawText(),
+                    JsonValueKind.True => "true",
+                    JsonValueKind.False => "false",
+                    _ => null
+                };
+                if (val is not null)
+                    values[prop.Name] = val;
+            }
+        }
+
+        return (title, desc, price, values.Count > 0 ? values : null);
     }
 }

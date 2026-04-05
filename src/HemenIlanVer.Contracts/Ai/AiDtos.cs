@@ -9,7 +9,11 @@ public sealed record ListingCategoryDetectResponse(
     IReadOnlyList<SubCategoryOptionDto> SubCategories,
     Guid? SuggestedLeafCategoryId,
     double Confidence,
-    bool UsedMockProvider);
+    bool UsedMockProvider,
+    string? SuggestedTitle = null,
+    string? SuggestedDescription = null,
+    decimal? SuggestedPrice = null,
+    IReadOnlyDictionary<string, string>? SuggestedAttributeValues = null);
 
 public sealed record ListingPartialSuggestRequest(string PartialText);
 public sealed record ListingPartialSuggestResponse(Guid TraceId, IReadOnlyList<string> Suggestions);
