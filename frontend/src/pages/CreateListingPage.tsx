@@ -276,7 +276,6 @@ export function CreateListingPage() {
                     setAttrValues({ ...attrValues, [a.attributeKey]: v });
 
                   const isBool = a.dataType === 'Bool';
-                  const isNumeric = a.dataType === 'Int' || a.dataType === 'Decimal' || a.dataType === 'Money';
                   const hasOptions = a.options.length > 0;
 
                   let control: React.ReactNode;
@@ -300,23 +299,14 @@ export function CreateListingPage() {
                         ))}
                       </select>
                     );
-                  } else if (isNumeric) {
-                    control = (
-                      <input
-                        type="number"
-                        value={val}
-                        onChange={(e) => setVal(e.target.value)}
-                        placeholder={a.displayName}
-                        inputMode="decimal"
-                      />
-                    );
                   } else {
                     control = (
-                      <input
-                        value={val}
-                        onChange={(e) => setVal(e.target.value)}
-                        placeholder={a.displayName}
-                      />
+                      <select value={val} onChange={(e) => setVal(e.target.value)}>
+                        <option value="">Seçiniz</option>
+                        {val && (
+                          <option value={val}>{val}</option>
+                        )}
+                      </select>
                     );
                   }
 
