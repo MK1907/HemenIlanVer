@@ -156,22 +156,27 @@ export function CreateListingPage() {
         publish: true,
         attributes: attrs.map((a) => {
           const raw = attrValues[a.attributeKey] ?? '';
-          let valueText: string | undefined = raw;
+          let valueText: string | undefined;
           let valueInt: number | undefined;
           let valueDecimal: number | undefined;
-          if (a.dataType === 'Int') {
+          let valueBool: boolean | undefined;
+
+          if (a.dataType === 'Bool') {
+            valueBool = raw === 'true' ? true : raw === 'false' ? false : undefined;
+          } else if (a.dataType === 'Int') {
             valueInt = raw ? parseInt(raw, 10) : undefined;
-            valueText = undefined;
           } else if (a.dataType === 'Decimal' || a.dataType === 'Money') {
             valueDecimal = raw ? parseFloat(raw.replace(',', '.')) : undefined;
-            valueText = undefined;
+          } else {
+            valueText = raw || undefined;
           }
+
           return {
             categoryAttributeId: a.id,
             valueText,
             valueInt,
             valueDecimal,
-            valueBool: undefined as boolean | undefined,
+            valueBool,
           };
         }),
       };
@@ -267,31 +272,61 @@ export function CreateListingPage() {
               <div className="filter-grid">
                 {attrs.map((a) => {
                   const val = attrValues[a.attributeKey] ?? '';
+                  const setVal = (v: string) =>
+                    setAttrValues({ ...attrValues, [a.attributeKey]: v });
+
+                  const isBool = a.dataType === 'Bool';
+                  const isNumeric = a.dataType === 'Int' || a.dataType === 'Decimal' || a.dataType === 'Money';
+                  const hasOptions = a.options.length > 0;
+
+                  let control: React.ReactNode;
+
+                  if (isBool) {
+                    control = (
+                      <select value={val} onChange={(e) => setVal(e.target.value)}>
+                        <option value="">Seçiniz</option>
+                        <option value="true">Evet</option>
+                        <option value="false">Hayır</option>
+                      </select>
+                    );
+                  } else if (hasOptions) {
+                    control = (
+                      <select value={val} onChange={(e) => setVal(e.target.value)}>
+                        <option value="">Seçiniz</option>
+                        {a.options.map((o) => (
+                          <option key={o.valueKey} value={o.valueKey}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  } else if (isNumeric) {
+                    control = (
+                      <input
+                        type="number"
+                        value={val}
+                        onChange={(e) => setVal(e.target.value)}
+                        placeholder={a.displayName}
+                        inputMode="decimal"
+                      />
+                    );
+                  } else {
+                    control = (
+                      <input
+                        value={val}
+                        onChange={(e) => setVal(e.target.value)}
+                        placeholder={a.displayName}
+                      />
+                    );
+                  }
+
                   return (
                     <label key={a.id} className="filter-item">
                       <span className="filter-item__label">
                         {a.displayName}
                         {a.isRequired && <span className="required-star">*</span>}
                       </span>
-                      <select
-                        value={val}
-                        onChange={(e) =>
-                          setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
-                        }
-                      >
-                        <option value="">Seçiniz</option>
-                        {a.options.length > 0
-                          ? a.options.map((o) => (
-                              <option key={o.valueKey} value={o.valueKey}>
-                                {o.label}
-                              </option>
-                            ))
-                          : val && (
-                              <option key={val} value={val}>
-                                {val}
-                              </option>
-                            )}
-                      </select>
+                      {control}
                     </label>
                   );
                 })}
