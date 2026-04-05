@@ -107,8 +107,8 @@ public sealed class AiSearchExtractionService : IAiSearchExtractionService
         };
 
         using var resp = await client.PostAsJsonAsync("chat/completions", body, ct);
-        resp.EnsureSuccessStatusCode();
         var json = await resp.Content.ReadAsStringAsync(ct);
+        OpenAiErrorMapper.EnsureSuccess(resp, json);
         var root = JsonDocument.Parse(json).RootElement;
         var content = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()
             ?? throw new InvalidOperationException("Boş içerik");
