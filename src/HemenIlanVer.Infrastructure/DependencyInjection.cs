@@ -45,6 +45,7 @@ public static class DependencyInjection
         services.AddScoped<IListingService, ListingService>();
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IAiListingExtractionService, AiListingExtractionService>();
+        services.AddScoped<IAiListingPartialSuggestionService, AiListingPartialSuggestionService>();
         services.AddScoped<IAiSearchExtractionService, AiSearchExtractionService>();
 
         return services;

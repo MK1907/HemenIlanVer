@@ -11,6 +11,9 @@ public sealed record ListingCategoryDetectResponse(
     double Confidence,
     bool UsedMockProvider);
 
+public sealed record ListingPartialSuggestRequest(string PartialText);
+public sealed record ListingPartialSuggestResponse(Guid TraceId, IReadOnlyList<string> Suggestions);
+
 public sealed record SearchExtractRequest(string Prompt, Guid? CategoryId);
 public sealed record SearchExtractResponse(
     Guid TraceId,

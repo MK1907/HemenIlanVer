@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +25,8 @@ type DetectResult = {
   usedMockProvider: boolean;
 };
 
+type PartialSuggestResponse = { traceId: string; suggestions: string[] };
+
 export function CreateListingPage() {
   const { user } = useAuth();
   const nav = useNavigate();
@@ -40,6 +43,8 @@ export function CreateListingPage() {
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [detect, setDetect] = useState<DetectResult | null>(null);
+  const [partialSuggestions, setPartialSuggestions] = useState<string[]>([]);
+  const [partialSuggestLoading, setPartialSuggestLoading] = useState(false);
 
   function refreshCategories() {
     api.get<Cat[]>('/api/categories').then((r) => setTree(r.data));
@@ -56,6 +61,38 @@ export function CreateListingPage() {
     }
     api.get<{ attributes: Attr[] }>(`/api/categories/${categoryId}/attributes`).then((r) => setAttrs(r.data.attributes));
   }, [categoryId]);
+
+  useEffect(() => {
+    const trimmed = prompt.trim();
+    if (trimmed.length < 2) {
+      setPartialSuggestions([]);
+      setPartialSuggestLoading(false);
+      return;
+    }
+
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      setPartialSuggestLoading(true);
+      api
+        .post<PartialSuggestResponse>('/api/ai/suggest-partial-listing', { partialText: trimmed }, { signal: ac.signal })
+        .then((res) => {
+          setPartialSuggestions(res.data.suggestions ?? []);
+        })
+        .catch((err: unknown) => {
+          if (axios.isAxiosError(err) && err.code === 'ERR_CANCELED') return;
+          setPartialSuggestions([]);
+        })
+        .finally(() => {
+          if (!ac.signal.aborted) setPartialSuggestLoading(false);
+        });
+    }, 450);
+
+    return () => {
+      clearTimeout(timer);
+      ac.abort();
+      setPartialSuggestLoading(false);
+    };
+  }, [prompt]);
 
   async function runDetect(e: FormEvent) {
     e.preventDefault();
@@ -127,6 +164,32 @@ export function CreateListingPage() {
             Ne satıyor / kiralıyorsunuz? (doğal dil)
             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={6} />
           </label>
+          {(partialSuggestLoading || partialSuggestions.length > 0) && (
+            <div className="suggestion-chips" aria-live="polite">
+              <p className="muted small suggestion-chips__title">
+                {partialSuggestLoading ? 'Olası yönler düşünülüyor…' : 'Yazdıklarınıza göre olası yönler (tıklayınca metne eklenir):'}
+              </p>
+              {!partialSuggestLoading && partialSuggestions.length > 0 && (
+                <div className="suggestion-chips__list">
+                  {partialSuggestions.map((s, i) => (
+                    <button
+                      key={`${i}-${s.slice(0, 24)}`}
+                      type="button"
+                      className="chip"
+                      onClick={() =>
+                        setPrompt((prev) => {
+                          const p = prev.trimEnd();
+                          return p ? `${p} ${s}` : s;
+                        })
+                      }
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <button className="btn primary" type="submit" disabled={loading || !prompt.trim()}>
             {loading ? 'İşleniyor…' : 'Kategori ve filtreleri bul (AI)'}
           </button>
