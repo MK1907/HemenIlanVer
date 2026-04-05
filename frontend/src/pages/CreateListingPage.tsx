@@ -60,11 +60,21 @@ export function CreateListingPage() {
   useEffect(() => {
     if (!categoryId) {
       setAttrs([]);
+      setAttrValues({});
       return;
     }
     api
       .get<{ attributes: Attr[] }>(`/api/categories/${categoryId}/attributes`)
-      .then((r) => setAttrs(r.data.attributes));
+      .then((r) => {
+        setAttrs(r.data.attributes);
+        setAttrValues((prev) => {
+          const next: Record<string, string> = {};
+          for (const a of r.data.attributes) {
+            if (prev[a.attributeKey]) next[a.attributeKey] = prev[a.attributeKey];
+          }
+          return next;
+        });
+      });
   }, [categoryId]);
 
   /* ── Yazarken AI önerileri (debounce 600ms) ── */
@@ -107,7 +117,7 @@ export function CreateListingPage() {
     setSuggestions([]);
   }
 
-  /* ── AI ile İşle → kategori + filtreler + otomatik doldurma ── */
+  /* ── AI ile İşle → kategori + özellikler + otomatik doldurma ── */
   async function runDetect(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -181,7 +191,7 @@ export function CreateListingPage() {
         <h2>Hızlı İlan Oluştur</h2>
         <p className="muted">
           İlanınızı kısaca tanımlayın; yapay zeka size olasılıklar sunar. Birini seçip
-          &laquo;AI ile İşle&raquo; dediğinizde kategori ve filtre alanları otomatik gelir.
+          &laquo;AI ile İşle&raquo; dediğinizde kategori ve özellikler otomatik gelir.
         </p>
 
         <form className="form" onSubmit={runDetect}>
@@ -225,75 +235,63 @@ export function CreateListingPage() {
         </form>
       </div>
 
-      {/* ─── Alt kart: AI sonucu + kategori seçimi + form ─── */}
+      {/* ─── Alt kart: kategori seçimi + özellikler + ilan formu ─── */}
       {detect && (
         <div className="card">
-          <div className="detect-summary">
-            <h3>{detect.rootName}</h3>
-            <span className="badge">Güven: {(detect.confidence * 100).toFixed(0)}%</span>
+          {/* Kategori seçimi — kullanıcı istediğini seçebilir */}
+          <div className="category-picker">
+            <h3>Kategori</h3>
+            <p className="muted small">AI önerdi, ama istediğiniz kategoriyi seçebilirsiniz.</p>
+            <select
+              className="category-select"
+              value={categoryId ?? ''}
+              onChange={(e) => setCategoryId(e.target.value || null)}
+            >
+              <option value="">Kategori seçin</option>
+              {tree.map((root) => (
+                <optgroup key={root.id} label={root.name}>
+                  {(root.children ?? []).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
           </div>
 
-          <form className="form" style={{ marginTop: '0.75rem' }}>
-            <label>
-              Alt kategori
-              <select value={categoryId ?? ''} onChange={(e) => setCategoryId(e.target.value || null)}>
-                <option value="">Seçin</option>
-                {tree.map((root) => (
-                  <optgroup key={root.id} label={root.name}>
-                    {(root.children ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-            {detect.subCategories.length > 0 && (
-              <p className="muted small">
-                Önerilen alt kategoriler: {detect.subCategories.map((s) => s.name).join(', ')}
-              </p>
-            )}
-          </form>
-
-          {/* Filtre alanları */}
+          {/* Özellikler — seçilen kategoriye göre dinamik */}
           {attrs.length > 0 && (
             <div className="filter-section">
-              <h4>Filtre Alanları</h4>
-              <p className="muted small">AI tarafından doldurulan alanlar yeşil kenarlıdır; istediğinizi değiştirebilirsiniz.</p>
+              <h4>Özellikler</h4>
               <div className="filter-grid">
                 {attrs.map((a) => {
                   const val = attrValues[a.attributeKey] ?? '';
-                  const filled = Boolean(val);
                   return (
-                    <label key={a.id} className={`filter-item${filled ? ' ai-filled' : ''}`}>
+                    <label key={a.id} className="filter-item">
                       <span className="filter-item__label">
                         {a.displayName}
                         {a.isRequired && <span className="required-star">*</span>}
                       </span>
-                      {a.options.length > 0 ? (
-                        <select
-                          value={val}
-                          onChange={(e) =>
-                            setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
-                          }
-                        >
-                          <option value="">Seçiniz</option>
-                          {a.options.map((o) => (
-                            <option key={o.valueKey} value={o.valueKey}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          value={val}
-                          onChange={(e) =>
-                            setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
-                          }
-                          placeholder={a.displayName}
-                        />
-                      )}
+                      <select
+                        value={val}
+                        onChange={(e) =>
+                          setAttrValues({ ...attrValues, [a.attributeKey]: e.target.value })
+                        }
+                      >
+                        <option value="">Seçiniz</option>
+                        {a.options.length > 0
+                          ? a.options.map((o) => (
+                              <option key={o.valueKey} value={o.valueKey}>
+                                {o.label}
+                              </option>
+                            ))
+                          : val && (
+                              <option key={val} value={val}>
+                                {val}
+                              </option>
+                            )}
+                      </select>
                     </label>
                   );
                 })}
@@ -325,9 +323,6 @@ export function CreateListingPage() {
               Yayına Gönder
             </button>
           </form>
-          <p className="muted small" style={{ marginTop: '0.5rem' }}>
-            Şehir/ilçe MVP'de örnek İstanbul/Ataşehir sabit; prod'da seçim eklenir.
-          </p>
         </div>
       )}
     </div>
