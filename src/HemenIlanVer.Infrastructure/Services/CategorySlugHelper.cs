@@ -8,7 +8,7 @@ internal static class CategorySlugHelper
     public static string SanitizeSlug(string? input)
     {
         if (string.IsNullOrWhiteSpace(input)) return "kategori";
-        var s = input.Trim().ToLower(new CultureInfo("tr-TR"));
+        var s = NormalizeToAscii(input.Trim());
         var sb = new StringBuilder(s.Length);
         foreach (var c in s)
         {

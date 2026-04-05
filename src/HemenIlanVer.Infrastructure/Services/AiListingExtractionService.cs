@@ -139,25 +139,29 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "- TÜRKÇE isimler kullan, slug'lar küçük harf ve tire.\n\n" +
 
             "=== FİLTRE (ATTRIBUTE) KURALLARI ===\n" +
-            "Yeni kategori oluştururken, o ürün/hizmet türünde PIYASADA KULLANILAN TÜM ÖZELLİKLERİ filters dizisine ekle.\n" +
-            "Sahibinden.com, Hepsiburada, Trendyol gibi sitelerde o kategoride hangi filtreler varsa HEPSİNİ koy.\n" +
-            "En az 10, en fazla 20 filtre üret. İlk sıraya en önemli olanları koy.\n" +
-            "Enum için options en az 3-4 seçenek koy (gerçekçi).\n\n" +
+            "Yeni kategori oluştururken, o ürün/hizmet türünde endüstrideki GERÇEK İLAN SİTELERİNDE (sahibinden.com, letgo, hepsiburada, trendyol, n11, gittigidiyor, arabam.com, emlakjet, hepsiemlak) kullanılan TÜM ÖZELLİKLERİ filters dizisine ekle.\n" +
+            "HİÇBİR ÖZELLİĞİ ATLAMA. Kullanıcının ilan girerken dolduracağı her alanı düşün.\n" +
+            "En az 15, en fazla 25 filtre üret. Öncelik sırası: tanımlayıcı özellikler (marka, model) > teknik özellikler > durum > fiyat/ticaret bilgisi > diğer.\n" +
+            "Enum için options en az 5-8 seçenek koy (gerçekçi, piyasada yaygın olanlar).\n" +
+            "Her Enum option'ında gerçek piyasa değerleri kullan (marka için gerçek markalar, renk için gerçek renkler vb.).\n\n" +
 
             "=== BAĞIMLILIK (PARENT-CHILD) KURALLARI ===\n" +
-            "Bazı özellikler başka bir özelliğe BAĞIMLIDIR. Örneğin 'model' → 'marka'ya bağlıdır.\n" +
+            "Bazı özellikler başka bir özelliğe BAĞIMLIDIR. Örneğin 'model' → 'marka'ya bağlıdır, 'seri' → 'model'e bağlıdır.\n" +
             "Bağımlı bir filtre tanımlarken parentKey alanına bağlı olduğu filtrenin key'ini yaz.\n" +
             "Bağımlı filtrenin her option'ında parentValue alanına, o option'ın hangi parent seçeneğine ait olduğunu yaz.\n" +
-            "Örnek: marka→BMW altında model→320i, 520d; marka→Mercedes altında model→C200, E220.\n" +
+            "Her parent seçeneği için en az 3-5 child option ekle.\n" +
+            "Örnek: marka→BMW altında model→3 Serisi, 5 Serisi, X5; marka→Mercedes altında model→C Serisi, E Serisi, GLC.\n" +
             "Bağımlılık yoksa parentKey ve parentValue null/yok olsun.\n\n" +
 
-            "KATEGORİ BAZLI FİLTRE ÖRNEKLERİ (referans — bunlarla sınırlı kalma, eksiksiz ol):\n" +
-            "Otomobil: marka, model, yıl, km, vites, yakıt, kasaTipi, motorHacmi, beygir, renk, çekiş, plaka, hasarDurumu, boyaDeğişen, garanti, takasUygun, kimden\n" +
-            "Konut: odaSayısı, m2, binaYaşı, kat, toplamKat, ısıtma, banyo, balkon, esyalı, siteMi, otopark, cephe, tapuDurumu, kimden\n" +
-            "Cep Telefonu: marka, model, hafıza, ram, ekranBoyutu, renk, garanti, durum, kutuVarMi, kimden\n" +
-            "Çanta: marka, tip, malzeme, renk, boyut, cinsiyet, durum, orijinallik, kutuSertifika, kimden\n" +
-            "Ayakkabı: marka, model, numara, renk, cinsiyet, tip, malzeme, durum, kimden\n" +
-            "Özel Ders: branş, hedefSınav, format, seviye, tecrübe, konum, kimden";
+            "=== KATEGORİ BAZLI TAM FİLTRE LİSTESİ (minimum — bunlardan AZ OLMA, daha fazla ekle) ===\n" +
+            "Otomobil (20+): marka(Enum), model(Enum,parent:marka), seri(Enum,parent:model), yıl(Int), km(Int), vitesTipi(Enum:Manuel/Otomatik/Yarı Otomatik/Triptonik), yakitTipi(Enum:Benzin/Dizel/LPG/Hybrid/Elektrik/Benzin & LPG), kasaTipi(Enum:Sedan/Hatchback/SUV/Station Wagon/Coupe/Cabrio/Minivan/Pick-up), motorHacmi(Enum:1.0/1.2/1.4/1.6/1.8/2.0/2.5/3.0+), beygirGucu(Int), renk(Enum:Beyaz/Siyah/Gri/Kırmızı/Mavi/Lacivert/Gümüş/Füme/Kahverengi/Yeşil/Sarı/Turuncu), cekisTipi(Enum:Önden/Arkadan/4x4/AWD), plakaUyrugu(Enum:TR/Yabancı), hasarKaydi(Enum:Hasarsız/Hafif Hasarlı/Ağır Hasarlı/Boyalı/Değişenli), tramerdegeri(Int), garanti(Bool), takasUygun(Bool), kimden(Enum:Sahibinden/Galeriden), durumu(Enum:Sıfır/İkinci El)\n" +
+            "Konut (20+): ilanTipi(Enum:Satılık/Kiralık), konutTipi(Enum:Daire/Müstakil/Villa/Residence/Yazlık/Çatı Katı/Dublex/Triplex), odaSayisi(Enum:1+0/1+1/2+1/3+1/4+1/5+1/6+), m2Brut(Int), m2Net(Int), binaYasi(Int), bulunduguKat(Enum:Giriş/1/2/3/4/5/6/7-10/11-15/16-20/Çatı), toplamKat(Int), isitmaTipi(Enum:Doğalgaz Kombi/Merkezi/Soba/Klima/Yerden Isıtma/Isı Pompası), banyoSayisi(Int), balkon(Bool), esyali(Bool), siteIcinde(Bool), otopark(Enum:Açık/Kapalı/Yok), cephe(Enum:Kuzey/Güney/Doğu/Batı/Güneydoğu/Güneybatı), yapininDurumu(Enum:Sıfır/İkinci El/Devam Eden Proje), tapuDurumu(Enum:Kat Mülkiyetli/Kat İrtifaklı/Hisseli/Müstakil/Kooperatif), aidat(Int), kimden(Enum:Sahibinden/Emlakçıdan/İnşaat Firmasından), krediyeUygun(Bool), takas(Bool)\n" +
+            "Cep Telefonu (18+): marka(Enum:Apple/Samsung/Xiaomi/Huawei/Oppo/Vivo/Realme/OnePlus/Google/Nothing), model(Enum,parent:marka), dahiliHafiza(Enum:32GB/64GB/128GB/256GB/512GB/1TB), ram(Enum:2GB/3GB/4GB/6GB/8GB/12GB/16GB), ekranBoyutu(Enum:5.0/5.5/6.0/6.1/6.4/6.5/6.7/6.8/6.9), renk(Enum:Siyah/Beyaz/Mavi/Kırmızı/Yeşil/Mor/Sarı/Gri/Altın/Gümüş), bataryaKapasitesi(Int), isletimSistemi(Enum:iOS/Android/HarmonyOS), kameraMegapiksel(Int), garanti(Bool), durumu(Enum:Sıfır/İkinci El/Yenilenmiş), kutusuVarMi(Bool), faturaliMi(Bool), agDesteği(Enum:4G/5G), ciftHat(Bool), ekranTipi(Enum:AMOLED/OLED/LCD/IPS), kimden(Enum:Sahibinden/Mağazadan), takas(Bool)\n" +
+            "Çanta & Aksesuar (16+): marka(Enum:Louis Vuitton/Gucci/Prada/Chanel/Hermès/Michael Kors/Coach/Zara/Mango/Vakko/Beymen), tip(Enum:El Çantası/Omuz Çantası/Sırt Çantası/Clutch/Bel Çantası/Evrak Çantası/Valiz/Cüzdan), malzeme(Enum:Deri/Sentetik Deri/Kumaş/Kanvas/Naylon/Süet), renk(Enum:Siyah/Beyaz/Kahverengi/Taba/Kırmızı/Lacivert/Bej/Pembe/Gri/Yeşil), boyut(Enum:Mini/Küçük/Orta/Büyük/Ekstra Büyük), cinsiyet(Enum:Kadın/Erkek/Unisex), durum(Enum:Sıfır/Az Kullanılmış/Kullanılmış), orijinallik(Enum:Orijinal/A Kalite/Replika), kutuSertifika(Bool), seriNumarasi(Bool), garantiDurumu(Bool), uretimYili(Int), koleksiyonSeri(String), kimden(Enum:Sahibinden/Mağazadan/Komisyoncudan), takas(Bool), fiyatPazarlik(Bool)\n" +
+            "Ayakkabı (16+): marka(Enum:Nike/Adidas/Puma/New Balance/Converse/Vans/Skechers/Reebok/Asics/Salomon/Timberland), model(Enum,parent:marka), numara(Enum:36/37/38/39/40/41/42/43/44/45/46), renk(Enum:Siyah/Beyaz/Kırmızı/Mavi/Gri/Kahverengi/Yeşil/Turuncu/Pembe/Çok Renkli), cinsiyet(Enum:Kadın/Erkek/Unisex/Çocuk), tip(Enum:Spor/Günlük/Klasik/Bot/Çizme/Sandalet/Terlik/Koşu/Outdoor/Krampon), malzeme(Enum:Deri/Sentetik/Kanvas/Tekstil/Süet), taban(Enum:Kauçuk/EVA/Köpük/Deri), durum(Enum:Sıfır/Az Kullanılmış/Kullanılmış), kutuVarMi(Bool), orijinallik(Enum:Orijinal/A Kalite/Replika), sezon(Enum:İlkbahar-Yaz/Sonbahar-Kış/4 Mevsim), kimden(Enum:Sahibinden/Mağazadan), takas(Bool), topukYuksekligi(Enum:Düz/Alçak/Orta/Yüksek), fiyatPazarlik(Bool)\n" +
+            "Bilgisayar / Laptop (18+): marka(Enum:Apple/Lenovo/Asus/HP/Dell/MSI/Acer/Monster/Huawei/Microsoft), model(Enum,parent:marka), islemci(Enum:Intel i3/Intel i5/Intel i7/Intel i9/AMD Ryzen 3/AMD Ryzen 5/AMD Ryzen 7/AMD Ryzen 9/Apple M1/Apple M2/Apple M3/Apple M4), ram(Enum:4GB/8GB/16GB/32GB/64GB), depolamaKapasitesi(Enum:128GB SSD/256GB SSD/512GB SSD/1TB SSD/2TB SSD/1TB HDD/2TB HDD), ekranBoyutu(Enum:13.3/14/15.6/16/17.3), ekranCozunurlugu(Enum:HD/FHD/2K/4K), ekranKarti(Enum:Dahili/NVIDIA RTX 3050/RTX 3060/RTX 4050/RTX 4060/RTX 4070/RTX 4080/RTX 4090/AMD Radeon), isletimSistemi(Enum:Windows 11/Windows 10/macOS/Linux/FreeDOS), renk(Enum:Gri/Siyah/Gümüş/Beyaz/Mavi), bataryaOmru(Int), agirlik(Decimal), garanti(Bool), durumu(Enum:Sıfır/İkinci El/Yenilenmiş), kutusuVarMi(Bool), kimden(Enum:Sahibinden/Mağazadan), takas(Bool)\n" +
+            "Mobilya (14+): tip(Enum:Koltuk Takımı/Yatak Odası/Yemek Masası/TV Ünitesi/Kitaplık/Gardırop/Sehpa/Çalışma Masası/Sandalye/Büfe/Konsol), marka(Enum:İstikbal/Bellona/Doğtaş/Kelebek/Çilek/Mondi/Yataş/IKEA/Mudo/Diğer), malzeme(Enum:Ahşap/MDF/Kumaş/Deri/Metal/Cam/Mermer), renk(Enum:Beyaz/Siyah/Kahverengi/Ceviz/Gri/Krem/Bej/Antrasit), durum(Enum:Sıfır/Az Kullanılmış/Kullanılmış/Yenilenmiş), adet(Int), boyutlar(String), stil(Enum:Modern/Klasik/Rustik/Minimalist/Retro/Bohem/Scandinavian), kimden(Enum:Sahibinden/Mağazadan), garanti(Bool), montajDahil(Bool), takas(Bool), teslimatSekli(Enum:Alıcı Öder/Satıcı Karşılar/Elden Teslim), fiyatPazarlik(Bool)\n" +
+            "Özel Ders / Eğitim (12+): brans(Enum:Matematik/Fizik/Kimya/Biyoloji/Türkçe/İngilizce/Almanca/Fransızca/Tarih/Coğrafya/Müzik/Resim/Yazılım), hedefSinav(Enum:LGS/YKS-TYT/YKS-AYT/KPSS/ALES/YDS/DGS/Sınıf İçi/Yok), formatı(Enum:Yüz Yüze/Online/Hibrit), seviye(Enum:İlkokul/Ortaokul/Lise/Üniversite/Yetişkin), tecrube(Enum:0-2 Yıl/3-5 Yıl/6-10 Yıl/10+ Yıl), konum(String), dersSuresi(Enum:30dk/45dk/60dk/90dk/120dk), grupMu(Enum:Bireysel/Grup/Her İkisi), kimden(Enum:Öğretmen/Üniversite Öğrencisi/Eğitim Kurumu), referansVarMi(Bool), uygunluk(Enum:Hafta İçi/Hafta Sonu/Her Gün/Akşam), ilkDersUcretsiz(Bool)";
 
         var body = new
         {
@@ -200,10 +204,49 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             throw new InvalidOperationException("OpenAI yanıtında rootSlug yok veya geçersiz.");
 
         var rootCat = roots.FirstOrDefault(r => r.Slug == rootSlug)
-            ?? roots.FirstOrDefault(r => CategorySlugHelper.SlugEquals(r.Slug, rootSlug));
+            ?? roots.FirstOrDefault(r => CategorySlugHelper.SlugEquals(r.Slug, rootSlug))
+            ?? roots.FirstOrDefault(r => CategorySlugHelper.NormalizeToAscii(r.Slug) == CategorySlugHelper.NormalizeToAscii(rootSlug))
+            ?? roots.FirstOrDefault(r => r.Slug == CategorySlugHelper.SanitizeSlug(rootSlug));
+
         if (rootCat is null)
-            throw new InvalidOperationException(
-                $"OpenAI kategori yanıtı veritabanıyla eşleşmedi (rootSlug: {rootSlug}).");
+        {
+            _logger.LogWarning("rootSlug '{Slug}' DB'de bulunamadı, bootstrap ile oluşturuluyor.", rootSlug);
+            var forceBootstrap = new Dictionary<string, object>
+            {
+                ["bootstrap"] = new Dictionary<string, object>
+                {
+                    ["needed"] = true,
+                    ["rootName"] = doc.TryGetProperty("bootstrap", out var bDoc) && bDoc.TryGetProperty("rootName", out var rn) && rn.ValueKind == JsonValueKind.String ? rn.GetString()! : rootSlug!,
+                    ["rootSlug"] = rootSlug!,
+                    ["childName"] = !string.IsNullOrEmpty(childSlug) ? childSlug : "Genel",
+                    ["childSlug"] = !string.IsNullOrEmpty(childSlug) ? childSlug : "genel",
+                    ["filters"] = Array.Empty<object>()
+                }
+            };
+            var forceJson = JsonSerializer.Serialize(forceBootstrap);
+            var forceDoc = JsonDocument.Parse(forceJson).RootElement;
+            await _categoryBootstrap.ApplyFromDetectDocumentAsync(forceDoc, ct);
+
+            roots = await _db.Categories.AsNoTracking()
+                .Where(x => x.ParentId == null && x.IsActive)
+                .OrderBy(x => x.SortOrder)
+                .Select(x => new { x.Id, x.Name, x.Slug })
+                .ToListAsync(ct);
+            children = await _db.Categories.AsNoTracking()
+                .Where(x => x.ParentId != null && x.IsActive)
+                .OrderBy(x => x.SortOrder)
+                .Select(x => new { x.Id, x.ParentId, x.Name, x.Slug })
+                .ToListAsync(ct);
+
+            rootCat = roots.FirstOrDefault(r => r.Slug == rootSlug)
+                ?? roots.FirstOrDefault(r => CategorySlugHelper.SlugEquals(r.Slug, rootSlug))
+                ?? roots.FirstOrDefault(r => CategorySlugHelper.NormalizeToAscii(r.Slug) == CategorySlugHelper.NormalizeToAscii(rootSlug))
+                ?? roots.FirstOrDefault(r => r.Slug == CategorySlugHelper.SanitizeSlug(rootSlug))
+                ?? roots.LastOrDefault();
+
+            if (rootCat is null)
+                throw new InvalidOperationException($"Kategori oluşturulamadı (rootSlug: {rootSlug}).");
+        }
 
         var subs = children.Where(c => c.ParentId == rootCat.Id)
             .Select(c => new SubCategoryOptionDto(c.Id, c.Name, c.Slug))
@@ -213,8 +256,10 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
         if (!string.IsNullOrEmpty(childSlug))
         {
             var match = children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == childSlug)
-                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlug));
+                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlug))
+                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.NormalizeToAscii(c.Slug) == CategorySlugHelper.NormalizeToAscii(childSlug));
             if (match is not null) leafId = match.Id;
+            else leafId = children.FirstOrDefault(c => c.ParentId == rootCat.Id)?.Id;
         }
 
         string? sugTitle = null;

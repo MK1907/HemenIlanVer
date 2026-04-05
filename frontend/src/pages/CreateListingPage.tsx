@@ -294,21 +294,16 @@ export function CreateListingPage() {
                     const parentAttr = attrs.find((p) => p.id === a.parentAttributeId);
                     if (parentAttr) {
                       const parentVal = attrValues[parentAttr.attributeKey] ?? '';
-                      if (parentVal) {
+                      const hasParentLinks = a.options.some((o) => o.parentOptionId);
+                      if (parentVal && hasParentLinks) {
                         const parentOpt = parentAttr.options.find(
                           (o) => o.valueKey === parentVal || o.label === parentVal,
                         );
                         if (parentOpt) {
-                          const hasParentLinks = a.options.some((o) => o.parentOptionId);
-                          if (hasParentLinks) {
-                            filteredOptions = a.options.filter(
-                              (o) => o.parentOptionId === parentOpt.id || !o.parentOptionId,
-                            );
-                          }
+                          filteredOptions = a.options.filter(
+                            (o) => o.parentOptionId === parentOpt.id || !o.parentOptionId,
+                          );
                         }
-                      } else {
-                        const hasParentLinks = a.options.some((o) => o.parentOptionId);
-                        if (hasParentLinks) filteredOptions = [];
                       }
                     }
                   }
