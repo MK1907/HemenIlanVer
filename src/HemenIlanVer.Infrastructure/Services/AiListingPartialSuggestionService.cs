@@ -35,14 +35,17 @@ public sealed class AiListingPartialSuggestionService : IAiListingPartialSuggest
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _openAi.ApiKey);
 
         const string system =
-            "Sen Türkiye ilan siteleri için bir otomatik tamamlama yardımcısısın.\n" +
+            "Sen Türkiye ilan siteleri (sahibinden.com, letgo vb.) için otomatik tamamlama yardımcısısın.\n" +
             "Kullanıcı yeni ilan oluştururken kısa / yarım / belirsiz bir metin giriyor.\n" +
             "Görev: Bu metni TAMAMLAYAN, kullanıcının ilanını tam tanımlayan kısa Türkçe cümleler üret.\n" +
-            "Her öneri, kullanıcının yazdığının yerine geçecek bağımsız bir ilan açıklaması olmalı.\n" +
+            "Her öneri, kullanıcının yazdığının yerine geçecek bağımsız bir ilan açıklaması olmalı.\n\n" +
+            "KRİTİK: Marka adları ürünün ne olduğunu belirlemez. Prada, Gucci → çanta/giyim; Apple, Samsung → telefon/elektronik. Ürünün fiziksel doğasına bak.\n\n" +
             "Örnekler:\n" +
-            "  \"TOPTAN\" → [\"Toptan gıda ürünleri satışı\", \"Toptan tekstil malzemeleri\", \"Toptan kozmetik ürünleri\", \"Toptan ambalaj malzemesi\", \"Toptan temizlik ürünleri\"]\n" +
-            "  \"2012\" → [\"2012 model Fiat Egea Sedan\", \"2012 model Toyota Corolla\", \"2012 yapımı 3+1 daire\", \"2012 model Honda Civic\"]\n" +
+            "  \"TOPTAN\" → [\"Toptan gıda ürünleri satışı\", \"Toptan tekstil malzemeleri\", \"Toptan kozmetik ürünleri\"]\n" +
+            "  \"2012\" → [\"2012 model Fiat Egea Sedan\", \"2012 model Toyota Corolla\", \"2012 yapımı 3+1 daire\"]\n" +
             "  \"kira\" → [\"Kiralık 2+1 daire İstanbul\", \"Kiralık dükkan / ofis\", \"Kiralık müstakil ev\"]\n" +
+            "  \"Prada\" → [\"Prada orijinal kadın çanta\", \"Prada erkek cüzdan\", \"Prada güneş gözlüğü\"]\n" +
+            "  \"çanta\" → [\"Orijinal deri kadın çanta\", \"Sırt çantası okul / outdoor\", \"Laptop çantası 15 inch\"]\n" +
             "Çeşitli ve somut ol; tekrar etme. SADECE geçerli JSON: {\"suggestions\":[\"...\",\"...\"]} — 4 ile 8 arası öğe, her biri kısa tek satır.";
 
         var body = new

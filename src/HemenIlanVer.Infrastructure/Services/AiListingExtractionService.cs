@@ -90,16 +90,52 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             .Select(x => new { x.Id, x.ParentId, x.Name, x.Slug })
             .ToListAsync(ct);
 
+        var rootList = roots.Select(r => new { r.Name, r.Slug }).ToList();
+        var childList = children.Select(c => new
+        {
+            c.Name,
+            c.Slug,
+            c.ParentId,
+            parentSlug = roots.FirstOrDefault(r => r.Id == c.ParentId)?.Slug
+        }).ToList();
+
         var system =
-            "Sen Türkiye ilan siteleri için ana kategori ve alt kategori seçeneklerini eşleştiren yardımcısın. SADECE geçerli JSON üret.\n" +
-            "Mevcut ana kategoriler (slug): " + JsonSerializer.Serialize(roots) + "\n" +
-            "Mevcut alt kategoriler (parentId, slug): " + JsonSerializer.Serialize(children) + "\n" +
-            "Çıktı: rootSlug, suggestedChildSlug (null olabilir), confidence (0-1).\n" +
-            "bootstrap: Kullanıcı niyeti yukarıdaki listede yoksa veya tam karşılığı yoksa doldur: " +
-            "needed (bool), rootName, rootSlug (küçük harf tire), childName, childSlug, " +
-            "filters (dizi: key, displayName, dataType String|Int|Decimal|Bool|Enum, required, options: valueKey+label dizisi). " +
-            "Enum için options en az 2; diğer tiplerde options boş.\n" +
-            "Önce mevcut slug seç; uygunsa bootstrap.needed=false. Yeni dikey için bootstrap ile 3-8 anlamlı filtre üret.";
+            "Sen Türkiye'deki sahibinden.com / letgo benzeri ilan sitelerinde ÜRÜN KATEGORİSİ TESPİTİ yapan bir uzmansın.\n\n" +
+
+            "=== ADIM ADIM DÜŞÜN ===\n" +
+            "1. Önce kullanıcının metninde geçen ÜRÜNü / HİZMETi belirle.\n" +
+            "2. Bu ürün hangi sektöre/kategoriye aittir? (örn: çanta, ayakkabı, giysi → Giyim & Aksesuar; telefon, laptop → Elektronik; araba → Araç; ev, daire → Emlak)\n" +
+            "3. Mevcut kategorilerden en uygun olanı seç. Yoksa bootstrap ile yeni kategori oluştur.\n\n" +
+
+            "=== KRİTİK KURALLAR ===\n" +
+            "- Marka adları (Prada, Gucci, Nike, Adidas, Louis Vuitton, Chanel vb.) ürünün KATEGORİSİNİ DEĞİŞTİRMEZ. Marka = attribute, kategori değil.\n" +
+            "- Bir çanta elektronik DEĞİLDİR. Bir ayakkabı araç DEĞİLDİR. ÜRÜNÜN FİZİKSEL DOĞASINA bak.\n" +
+            "- \"Orijinal\", \"replika\", \"toptan\" gibi kelimeler kategoriyi değiştirmez, ürünün kendisine odaklan.\n\n" +
+
+            "=== ÖRNEK EŞLEŞTIRMELER ===\n" +
+            "- \"Çanta Orijinal Prada Marka\" → Giyim & Aksesuar > Çanta (marka: Prada)\n" +
+            "- \"2012 model Fiat Egea\" → Araç > Otomobil (marka: Fiat, model: Egea, yıl: 2012)\n" +
+            "- \"iPhone 15 Pro 256GB\" → Elektronik > Cep Telefonu (marka: Apple, model: iPhone 15 Pro)\n" +
+            "- \"3+1 daire Kadıköy\" → Emlak > Konut\n" +
+            "- \"LGS Matematik özel ders\" → Eğitim > Özel Ders\n" +
+            "- \"Nike Air Force beyaz spor ayakkabı\" → Giyim & Aksesuar > Ayakkabı\n" +
+            "- \"Toptan havlu seti\" → Giyim & Aksesuar > Tekstil veya Ev & Yaşam > Ev Tekstili\n\n" +
+
+            "=== MEVCUT KATEGORİLER ===\n" +
+            "Ana kategoriler (name → slug): " + JsonSerializer.Serialize(rootList) + "\n" +
+            "Alt kategoriler (name → slug, parentSlug): " + JsonSerializer.Serialize(childList) + "\n\n" +
+
+            "=== ÇIKTI FORMATI (SADECE JSON) ===\n" +
+            "{\"reasoning\":\"kısa düşünce (ürün nedir, hangi kategoriye ait)\", \"rootSlug\":\"...\", \"suggestedChildSlug\":\"...\"|null, \"confidence\":0.0-1.0, " +
+            "\"bootstrap\":{\"needed\":true/false, \"rootName\":\"...\", \"rootSlug\":\"...\", \"childName\":\"...\", \"childSlug\":\"...\", " +
+            "\"filters\":[{\"key\":\"...\", \"displayName\":\"...\", \"dataType\":\"String|Int|Decimal|Bool|Enum|Money\", \"required\":true/false, \"options\":[{\"valueKey\":\"...\",\"label\":\"...\"}]}]}}\n\n" +
+
+            "=== BOOTSTRAP KURALLARI ===\n" +
+            "- Mevcut slug'lardan biri uygunsa → bootstrap.needed=false, o slug'ı seç.\n" +
+            "- Uygun kategori YOKSA → bootstrap.needed=true, doğru isim ve slug ile yeni oluştur.\n" +
+            "- Yeni kategori oluştururken 4-8 anlamlı filtre (attribute) belirle. Enum için options en az 2.\n" +
+            "- Giyim/aksesuar ürünü için filtre örnekleri: marka, renk, beden, malzeme, durum (sıfır/ikinci el).\n" +
+            "- TÜRKÇE isimler kullan, slug'lar küçük harf ve tire.";
 
         var body = new
         {
@@ -211,14 +247,19 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
         }).ToList();
 
         var system =
-            "Sen ilan metni ayrıştırıcısın. Kullanıcının yazdığı metne göre aşağıdaki alan değerlerini çıkar.\n" +
-            "Alanlar: " + JsonSerializer.Serialize(attrSpec) + "\n" +
-            "Kurallar:\n" +
-            "- Enum tipli alanlar için MUTLAKA options içindeki valueKey değerlerinden birini seç.\n" +
-            "- Int / Decimal / Money alanları sayı olarak ver.\n" +
-            "- Bool alanları true/false olarak ver.\n" +
-            "- Metinden çıkaramadığın alanları atla (JSON'a koyma).\n" +
-            "- Ayrıca şunları çıkar: suggestedTitle (kısa ilan başlığı), suggestedDescription (2-3 cümle açıklama), suggestedPrice (TRY cinsinden, null olabilir).\n" +
+            "Sen Türkiye ilan sitelerinde ilan metni ayrıştırıcısın.\n" +
+            "Kullanıcının yazdığı metne göre aşağıdaki kategori filtre alanlarının değerlerini çıkar.\n\n" +
+            "ALANLAR: " + JsonSerializer.Serialize(attrSpec) + "\n\n" +
+            "KURALLAR:\n" +
+            "- Enum tipli alanlar için MUTLAKA verilen options içindeki valueKey değerlerinden birini seç, kendin uydurmak YOK.\n" +
+            "- Int / Decimal / Money → sadece sayı.\n" +
+            "- Bool → true / false.\n" +
+            "- Metinden DOĞRUDAN veya MANTIKSAL ÇIKARIM ile belirleyebildiğin tüm alanları doldur.\n" +
+            "  Örn: 'Prada çanta' → marka: Prada. 'Otomatik vites' → gear: Otomatik.\n" +
+            "- Metinden çıkaramadığın alanları JSON'a KOYma.\n" +
+            "- suggestedTitle: Türkçe, çekici, kısa ilan başlığı (maks 100 karakter).\n" +
+            "- suggestedDescription: 2-3 cümle detaylı açıklama.\n" +
+            "- suggestedPrice: TRY, tahmin edebiliyorsan; edemezsen null.\n\n" +
             "SADECE geçerli JSON: {\"suggestedTitle\":\"...\",\"suggestedDescription\":\"...\",\"suggestedPrice\":null,\"attributes\":{\"key\":\"value\",...}}";
 
         var body = new
