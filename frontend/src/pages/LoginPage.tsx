@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { safeReturnUrl } from '../utils/safeReturnUrl';
 
 export function LoginPage() {
   const { login } = useAuth();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +17,7 @@ export function LoginPage() {
     setError(null);
     try {
       await login(email, password);
-      nav('/');
+      nav(safeReturnUrl(searchParams.get('returnUrl')), { replace: true });
     } catch {
       setError('Giriş başarısız. Bilgilerinizi kontrol edin.');
     }
@@ -48,7 +50,16 @@ export function LoginPage() {
         Demo: <code>demo@hemenilanver.local</code> / <code>Demo12345!</code>
       </p>
       <p>
-        Hesabın yok mu? <Link to="/register">Kayıt ol</Link>
+        Hesabın yok mu?{' '}
+        <Link
+          to={
+            searchParams.get('returnUrl')
+              ? `/register?returnUrl=${encodeURIComponent(searchParams.get('returnUrl')!)}`
+              : '/register'
+          }
+        >
+          Kayıt ol
+        </Link>
       </p>
     </div>
   );

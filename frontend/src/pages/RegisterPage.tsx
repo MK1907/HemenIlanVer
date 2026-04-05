@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { safeReturnUrl } from '../utils/safeReturnUrl';
 
 export function RegisterPage() {
   const { register } = useAuth();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -16,7 +18,7 @@ export function RegisterPage() {
     setError(null);
     try {
       await register(email, password, displayName);
-      nav('/');
+      nav(safeReturnUrl(searchParams.get('returnUrl')), { replace: true });
     } catch {
       setError('Kayıt başarısız. E-posta kullanımda olabilir.');
     }
@@ -51,7 +53,16 @@ export function RegisterPage() {
         </button>
       </form>
       <p>
-        Zaten hesabın var mı? <Link to="/login">Giriş</Link>
+        Zaten hesabın var mı?{' '}
+        <Link
+          to={
+            searchParams.get('returnUrl')
+              ? `/login?returnUrl=${encodeURIComponent(searchParams.get('returnUrl')!)}`
+              : '/login'
+          }
+        >
+          Giriş
+        </Link>
       </p>
     </div>
   );

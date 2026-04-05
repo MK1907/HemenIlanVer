@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 
@@ -59,10 +59,6 @@ export function CreateListingPage() {
 
   async function runDetect(e: FormEvent) {
     e.preventDefault();
-    if (!user) {
-      nav('/login');
-      return;
-    }
     setLoading(true);
     try {
       const { data } = await api.post<DetectResult>('/api/ai/detect-listing-category', { prompt });
@@ -116,17 +112,6 @@ export function CreateListingPage() {
     } finally {
       setLoading(false);
     }
-  }
-
-  if (!user) {
-    return (
-      <div className="card narrow">
-        <p>AI ile ilan oluşturmak için giriş yapmalısınız.</p>
-        <Link className="btn primary" to="/login">
-          Giriş
-        </Link>
-      </div>
-    );
   }
 
   return (

@@ -9,6 +9,7 @@ import { ListingDetailPage } from './pages/ListingDetailPage';
 import { SearchPage } from './pages/SearchPage';
 import { CreateListingPage } from './pages/CreateListingPage';
 import { AdminPage } from './pages/AdminPage';
+import { RequireAuth } from './components/RequireAuth';
 
 export default function App() {
   return (
@@ -22,7 +23,14 @@ export default function App() {
             <Route path="/listings" element={<ListingsPage />} />
             <Route path="/listings/:id" element={<ListingDetailPage />} />
             <Route path="/search" element={<SearchPage />} />
-            <Route path="/create" element={<CreateListingPage />} />
+            <Route
+              path="/create"
+              element={
+                <RequireAuth>
+                  <CreateListingPage />
+                </RequireAuth>
+              }
+            />
             <Route path="/admin" element={<AdminPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
