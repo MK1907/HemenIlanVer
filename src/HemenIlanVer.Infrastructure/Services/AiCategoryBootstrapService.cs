@@ -27,8 +27,9 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
 
         await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
 
-        var root = await _db.Categories
-            .FirstOrDefaultAsync(x => x.ParentId == null && x.Slug == rootSlug, cancellationToken);
+        var allRoots = await _db.Categories.Where(x => x.ParentId == null).ToListAsync(cancellationToken);
+        var root = allRoots.FirstOrDefault(x => x.Slug == rootSlug)
+            ?? allRoots.FirstOrDefault(x => CategorySlugHelper.SlugEquals(x.Slug, rootSlug));
         if (root is null)
         {
             var maxSort = await _db.Categories.Where(x => x.ParentId == null).MaxAsync(x => (int?)x.SortOrder, cancellationToken) ?? 0;
@@ -46,8 +47,9 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
-        var child = await _db.Categories
-            .FirstOrDefaultAsync(x => x.ParentId == root.Id && x.Slug == childSlug, cancellationToken);
+        var allChildren = await _db.Categories.Where(x => x.ParentId == root.Id).ToListAsync(cancellationToken);
+        var child = allChildren.FirstOrDefault(x => x.Slug == childSlug)
+            ?? allChildren.FirstOrDefault(x => CategorySlugHelper.SlugEquals(x.Slug, childSlug));
         if (child is null)
         {
             var maxChild = await _db.Categories.Where(x => x.ParentId == root.Id).MaxAsync(x => (int?)x.SortOrder, cancellationToken) ?? 0;
@@ -74,6 +76,8 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
         }
 
         var filterCount = 0;
+        var keyToAttrId = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
         if (b.TryGetProperty("filters", out var filtersArr) && filtersArr.ValueKind == JsonValueKind.Array)
         {
             var sortOrder = 0;
@@ -95,7 +99,18 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
                         dt = AttributeDataType.String;
                 }
 
+                var parentKeyRaw = GetString(el, "parentKey");
+                Guid? parentAttrId = null;
+                if (!string.IsNullOrWhiteSpace(parentKeyRaw))
+                {
+                    var parentKeySanitized = CategorySlugHelper.SanitizeAttributeKey(parentKeyRaw);
+                    keyToAttrId.TryGetValue(parentKeySanitized, out var pid);
+                    if (pid != Guid.Empty) parentAttrId = pid;
+                }
+
                 var attrId = Guid.NewGuid();
+                keyToAttrId[key] = attrId;
+
                 _db.CategoryAttributes.Add(new CategoryAttribute
                 {
                     Id = attrId,
@@ -105,39 +120,85 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
                     DataType = dt,
                     IsRequired = req,
                     SortOrder = sortOrder,
+                    ParentAttributeId = parentAttrId,
                     CreatedAt = DateTimeOffset.UtcNow
                 });
 
-                if (dt == AttributeDataType.Enum && el.TryGetProperty("options", out var optArr) && optArr.ValueKind == JsonValueKind.Array)
+                filterCount++;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            sortOrder = 0;
+            foreach (var el in filtersArr.EnumerateArray())
+            {
+                sortOrder++;
+                var keyRaw = GetString(el, "key") ?? GetString(el, "attributeKey");
+                if (string.IsNullOrWhiteSpace(keyRaw)) continue;
+                var key = CategorySlugHelper.SanitizeAttributeKey(keyRaw);
+                var dtStr = GetString(el, "dataType") ?? "String";
+                if (!Enum.TryParse<AttributeDataType>(dtStr, true, out var dt))
+                    dt = AttributeDataType.String;
+                if (dt == AttributeDataType.Enum)
                 {
-                    var oi = 0;
-                    foreach (var opt in optArr.EnumerateArray())
-                    {
-                        var vk = GetString(opt, "valueKey") ?? GetString(opt, "key");
-                        var lbl = GetString(opt, "label") ?? vk;
-                        if (string.IsNullOrWhiteSpace(vk)) continue;
-                        _db.CategoryAttributeOptions.Add(new CategoryAttributeOption
-                        {
-                            Id = Guid.NewGuid(),
-                            CategoryAttributeId = attrId,
-                            ValueKey = vk,
-                            Label = lbl ?? vk,
-                            SortOrder = ++oi,
-                            CreatedAt = DateTimeOffset.UtcNow
-                        });
-                    }
+                    if (!el.TryGetProperty("options", out var opts2) || opts2.ValueKind != JsonValueKind.Array || opts2.GetArrayLength() < 2)
+                        dt = AttributeDataType.String;
                 }
 
-                filterCount++;
+                if (!keyToAttrId.TryGetValue(key, out var attrId)) continue;
+                if (dt != AttributeDataType.Enum) continue;
+                if (!el.TryGetProperty("options", out var optArr) || optArr.ValueKind != JsonValueKind.Array) continue;
+
+                var parentKeyRaw = GetString(el, "parentKey");
+                Guid? parentAttrIdForLookup = null;
+                if (!string.IsNullOrWhiteSpace(parentKeyRaw))
+                {
+                    var pk = CategorySlugHelper.SanitizeAttributeKey(parentKeyRaw);
+                    keyToAttrId.TryGetValue(pk, out var pid);
+                    if (pid != Guid.Empty) parentAttrIdForLookup = pid;
+                }
+
+                var parentOptions = parentAttrIdForLookup.HasValue
+                    ? await _db.CategoryAttributeOptions
+                        .Where(o => o.CategoryAttributeId == parentAttrIdForLookup.Value)
+                        .ToListAsync(cancellationToken)
+                    : new List<CategoryAttributeOption>();
+
+                var oi = 0;
+                foreach (var opt in optArr.EnumerateArray())
+                {
+                    var vk = GetString(opt, "valueKey") ?? GetString(opt, "key");
+                    var lbl = GetString(opt, "label") ?? vk;
+                    if (string.IsNullOrWhiteSpace(vk)) continue;
+
+                    Guid? parentOptId = null;
+                    var parentValue = GetString(opt, "parentValue");
+                    if (!string.IsNullOrWhiteSpace(parentValue) && parentOptions.Count > 0)
+                    {
+                        var po = parentOptions.FirstOrDefault(p =>
+                            string.Equals(p.ValueKey, parentValue, StringComparison.OrdinalIgnoreCase));
+                        if (po is not null) parentOptId = po.Id;
+                    }
+
+                    _db.CategoryAttributeOptions.Add(new CategoryAttributeOption
+                    {
+                        Id = Guid.NewGuid(),
+                        CategoryAttributeId = attrId,
+                        ValueKey = vk,
+                        Label = lbl ?? vk,
+                        SortOrder = ++oi,
+                        ParentOptionId = parentOptId,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    });
+                }
             }
         }
 
         if (filterCount == 0)
         {
-            var attrId = Guid.NewGuid();
             _db.CategoryAttributes.Add(new CategoryAttribute
             {
-                Id = attrId,
+                Id = Guid.NewGuid(),
                 CategoryId = child.Id,
                 AttributeKey = "aciklama",
                 DisplayName = "Açıklama",

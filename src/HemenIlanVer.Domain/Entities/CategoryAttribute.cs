@@ -12,5 +12,7 @@ public class CategoryAttribute : BaseEntity
     public bool IsRequired { get; set; }
     public int SortOrder { get; set; }
     public string? ValidationJson { get; set; }
+    public Guid? ParentAttributeId { get; set; }
+    public CategoryAttribute? ParentAttribute { get; set; }
     public ICollection<CategoryAttributeOption> Options { get; set; } = new List<CategoryAttributeOption>();
 }

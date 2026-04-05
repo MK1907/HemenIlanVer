@@ -80,6 +80,7 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             e.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
             e.HasIndex(x => new { x.CategoryId, x.AttributeKey }).IsUnique();
             e.HasOne(x => x.Category).WithMany(x => x.Attributes).HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ParentAttribute).WithMany().HasForeignKey(x => x.ParentAttributeId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<CategoryAttributeOption>(e =>
@@ -89,6 +90,7 @@ public sealed class AppDbContext : IdentityDbContext<ApplicationUser, IdentityRo
             e.Property(x => x.ValueKey).HasMaxLength(80).IsRequired();
             e.Property(x => x.Label).HasMaxLength(200).IsRequired();
             e.HasOne(x => x.CategoryAttribute).WithMany(x => x.Options).HasForeignKey(x => x.CategoryAttributeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ParentOption).WithMany().HasForeignKey(x => x.ParentOptionId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Listing>(e =>

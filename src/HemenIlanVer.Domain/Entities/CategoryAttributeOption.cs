@@ -7,4 +7,6 @@ public class CategoryAttributeOption : BaseEntity
     public string ValueKey { get; set; } = string.Empty;
     public string Label { get; set; } = string.Empty;
     public int SortOrder { get; set; }
+    public Guid? ParentOptionId { get; set; }
+    public CategoryAttributeOption? ParentOption { get; set; }
 }

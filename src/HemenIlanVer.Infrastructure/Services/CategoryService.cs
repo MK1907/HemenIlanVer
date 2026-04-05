@@ -50,7 +50,8 @@ public sealed class CategoryService : ICategoryService
             a.DataType.ToString(),
             a.IsRequired,
             a.SortOrder,
-            a.Options.OrderBy(o => o.SortOrder).Select(o => new CategoryAttributeOptionDto(o.ValueKey, o.Label, o.SortOrder)).ToList()
+            a.ParentAttributeId,
+            a.Options.OrderBy(o => o.SortOrder).Select(o => new CategoryAttributeOptionDto(o.Id, o.ValueKey, o.Label, o.SortOrder, o.ParentOptionId)).ToList()
         )).ToList();
 
         return new CategoryAttributesResponse(categoryId, dtos);

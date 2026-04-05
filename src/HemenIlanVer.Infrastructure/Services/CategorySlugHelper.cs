@@ -30,4 +30,22 @@ internal static class CategorySlugHelper
         var s = new string(key.Where(ch => char.IsLetterOrDigit(ch) || ch == '_').ToArray());
         return string.IsNullOrEmpty(s) ? "alan" : s.ToLowerInvariant();
     }
+
+    public static string NormalizeToAscii(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return "";
+        var s = input.ToLowerInvariant()
+            .Replace("ç", "c").Replace("ğ", "g").Replace("ı", "i")
+            .Replace("ö", "o").Replace("ş", "s").Replace("ü", "u")
+            .Replace("Ç", "c").Replace("Ğ", "g").Replace("İ", "i")
+            .Replace("Ö", "o").Replace("Ş", "s").Replace("Ü", "u");
+        return s;
+    }
+
+    public static bool SlugEquals(string? a, string? b)
+    {
+        if (a == b) return true;
+        if (a is null || b is null) return false;
+        return NormalizeToAscii(a) == NormalizeToAscii(b);
+    }
 }

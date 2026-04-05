@@ -7,13 +7,16 @@ import { useAuth } from '../context/AuthContext';
 
 type Cat = { id: string; name: string; slug: string; children: Cat[] };
 
+type AttrOption = { id: string; valueKey: string; label: string; parentOptionId: string | null };
+
 type Attr = {
   id: string;
   attributeKey: string;
   displayName: string;
   dataType: string;
   isRequired: boolean;
-  options: { valueKey: string; label: string }[];
+  parentAttributeId: string | null;
+  options: AttrOption[];
 };
 
 type DetectResult = {
@@ -45,6 +48,7 @@ export function CreateListingPage() {
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [detect, setDetect] = useState<DetectResult | null>(null);
+  const [attrRefreshKey, setAttrRefreshKey] = useState(0);
 
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
@@ -75,7 +79,7 @@ export function CreateListingPage() {
           return next;
         });
       });
-  }, [categoryId]);
+  }, [categoryId, attrRefreshKey]);
 
   /* ── Yazarken AI önerileri (debounce 600ms) ── */
   useEffect(() => {
@@ -134,6 +138,8 @@ export function CreateListingPage() {
       if (data.suggestedDescription) setDescription(data.suggestedDescription);
       if (data.suggestedPrice) setPrice(String(data.suggestedPrice));
       if (data.suggestedAttributeValues) setAttrValues(data.suggestedAttributeValues);
+
+      setAttrRefreshKey((k) => k + 1);
     } finally {
       setLoading(false);
     }
@@ -272,11 +278,40 @@ export function CreateListingPage() {
               <div className="filter-grid">
                 {attrs.map((a) => {
                   const val = attrValues[a.attributeKey] ?? '';
-                  const setVal = (v: string) =>
-                    setAttrValues({ ...attrValues, [a.attributeKey]: v });
+                  const setVal = (v: string) => {
+                    const next = { ...attrValues, [a.attributeKey]: v };
+                    const childAttrs = attrs.filter((c) => c.parentAttributeId === a.id);
+                    for (const child of childAttrs) {
+                      next[child.attributeKey] = '';
+                    }
+                    setAttrValues(next);
+                  };
 
                   const isBool = a.dataType === 'Bool';
-                  const hasOptions = a.options.length > 0;
+
+                  let filteredOptions = a.options;
+                  if (a.parentAttributeId) {
+                    const parentAttr = attrs.find((p) => p.id === a.parentAttributeId);
+                    if (parentAttr) {
+                      const parentVal = attrValues[parentAttr.attributeKey] ?? '';
+                      if (parentVal) {
+                        const parentOpt = parentAttr.options.find(
+                          (o) => o.valueKey === parentVal || o.label === parentVal,
+                        );
+                        if (parentOpt) {
+                          const hasParentLinks = a.options.some((o) => o.parentOptionId);
+                          if (hasParentLinks) {
+                            filteredOptions = a.options.filter(
+                              (o) => o.parentOptionId === parentOpt.id || !o.parentOptionId,
+                            );
+                          }
+                        }
+                      } else {
+                        const hasParentLinks = a.options.some((o) => o.parentOptionId);
+                        if (hasParentLinks) filteredOptions = [];
+                      }
+                    }
+                  }
 
                   let control: React.ReactNode;
 
@@ -288,24 +323,20 @@ export function CreateListingPage() {
                         <option value="false">Hayır</option>
                       </select>
                     );
-                  } else if (hasOptions) {
+                  } else {
+                    const optionKeys = new Set(filteredOptions.map((o) => o.valueKey));
+                    const showExtraVal = val && !optionKeys.has(val);
                     control = (
                       <select value={val} onChange={(e) => setVal(e.target.value)}>
                         <option value="">Seçiniz</option>
-                        {a.options.map((o) => (
+                        {showExtraVal && (
+                          <option value={val}>{val}</option>
+                        )}
+                        {filteredOptions.map((o) => (
                           <option key={o.valueKey} value={o.valueKey}>
                             {o.label}
                           </option>
                         ))}
-                      </select>
-                    );
-                  } else {
-                    control = (
-                      <select value={val} onChange={(e) => setVal(e.target.value)}>
-                        <option value="">Seçiniz</option>
-                        {val && (
-                          <option value={val}>{val}</option>
-                        )}
                       </select>
                     );
                   }

@@ -5,6 +5,7 @@ using System.Text.Json;
 using HemenIlanVer.Application.Abstractions;
 using HemenIlanVer.Contracts.Ai;
 using HemenIlanVer.Domain.Entities;
+using HemenIlanVer.Domain.Enums;
 using HemenIlanVer.Infrastructure.Options;
 using HemenIlanVer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -128,7 +129,9 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "=== ÇIKTI FORMATI (SADECE JSON) ===\n" +
             "{\"reasoning\":\"kısa düşünce (ürün nedir, hangi kategoriye ait)\", \"rootSlug\":\"...\", \"suggestedChildSlug\":\"...\"|null, \"confidence\":0.0-1.0, " +
             "\"bootstrap\":{\"needed\":true/false, \"rootName\":\"...\", \"rootSlug\":\"...\", \"childName\":\"...\", \"childSlug\":\"...\", " +
-            "\"filters\":[{\"key\":\"...\", \"displayName\":\"...\", \"dataType\":\"String|Int|Decimal|Bool|Enum|Money\", \"required\":true/false, \"options\":[{\"valueKey\":\"...\",\"label\":\"...\"}]}]}}\n\n" +
+            "\"filters\":[{\"key\":\"...\", \"displayName\":\"...\", \"dataType\":\"String|Int|Decimal|Bool|Enum|Money\", \"required\":true/false, " +
+            "\"parentKey\":null|\"başka bir filtre key'i (bağımlılık varsa)\", " +
+            "\"options\":[{\"valueKey\":\"...\",\"label\":\"...\",\"parentValue\":null|\"parent option valueKey\"}]}]}}\n\n" +
 
             "=== BOOTSTRAP KURALLARI ===\n" +
             "- Mevcut slug'lardan biri uygunsa → bootstrap.needed=false, o slug'ı seç.\n" +
@@ -140,6 +143,13 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "Sahibinden.com, Hepsiburada, Trendyol gibi sitelerde o kategoride hangi filtreler varsa HEPSİNİ koy.\n" +
             "En az 10, en fazla 20 filtre üret. İlk sıraya en önemli olanları koy.\n" +
             "Enum için options en az 3-4 seçenek koy (gerçekçi).\n\n" +
+
+            "=== BAĞIMLILIK (PARENT-CHILD) KURALLARI ===\n" +
+            "Bazı özellikler başka bir özelliğe BAĞIMLIDIR. Örneğin 'model' → 'marka'ya bağlıdır.\n" +
+            "Bağımlı bir filtre tanımlarken parentKey alanına bağlı olduğu filtrenin key'ini yaz.\n" +
+            "Bağımlı filtrenin her option'ında parentValue alanına, o option'ın hangi parent seçeneğine ait olduğunu yaz.\n" +
+            "Örnek: marka→BMW altında model→320i, 520d; marka→Mercedes altında model→C200, E220.\n" +
+            "Bağımlılık yoksa parentKey ve parentValue null/yok olsun.\n\n" +
 
             "KATEGORİ BAZLI FİLTRE ÖRNEKLERİ (referans — bunlarla sınırlı kalma, eksiksiz ol):\n" +
             "Otomobil: marka, model, yıl, km, vites, yakıt, kasaTipi, motorHacmi, beygir, renk, çekiş, plaka, hasarDurumu, boyaDeğişen, garanti, takasUygun, kimden\n" +
@@ -189,7 +199,8 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
         if (string.IsNullOrWhiteSpace(rootSlug))
             throw new InvalidOperationException("OpenAI yanıtında rootSlug yok veya geçersiz.");
 
-        var rootCat = roots.FirstOrDefault(r => r.Slug == rootSlug);
+        var rootCat = roots.FirstOrDefault(r => r.Slug == rootSlug)
+            ?? roots.FirstOrDefault(r => CategorySlugHelper.SlugEquals(r.Slug, rootSlug));
         if (rootCat is null)
             throw new InvalidOperationException(
                 $"OpenAI kategori yanıtı veritabanıyla eşleşmedi (rootSlug: {rootSlug}).");
@@ -201,7 +212,8 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
         Guid? leafId = null;
         if (!string.IsNullOrEmpty(childSlug))
         {
-            var match = children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == childSlug);
+            var match = children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == childSlug)
+                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlug));
             if (match is not null) leafId = match.Id;
         }
 
@@ -216,6 +228,9 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             {
                 (sugTitle, sugDesc, sugPrice, sugAttrs) =
                     await ExtractAttributeValuesAsync(client, prompt, leafId.Value, ct);
+
+                if (sugAttrs is { Count: > 0 })
+                    await PersistNewOptionValuesAsync(leafId.Value, sugAttrs, ct);
             }
             catch (Exception ex)
             {
@@ -263,11 +278,12 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "Kullanıcının yazdığı metne göre aşağıdaki kategori filtre alanlarının değerlerini çıkar.\n\n" +
             "ALANLAR: " + JsonSerializer.Serialize(attrSpec) + "\n\n" +
             "KURALLAR:\n" +
-            "- Enum tipli alanlar için MUTLAKA verilen options içindeki valueKey değerlerinden birini seç, kendin uydurmak YOK.\n" +
+            "- Enum tipli alanlar: Eğer verilen options içinde uygun bir değer varsa onu seç. Yoksa metinden çıkardığın gerçek değeri yaz (yeni değer olabilir).\n" +
+            "- String tipli alanlar: Metinden çıkardığın değeri serbest yaz.\n" +
             "- Int / Decimal / Money → sadece sayı.\n" +
             "- Bool → true / false.\n" +
             "- Metinden DOĞRUDAN veya MANTIKSAL ÇIKARIM ile belirleyebildiğin tüm alanları doldur.\n" +
-            "  Örn: 'Prada çanta' → marka: Prada. 'Otomatik vites' → gear: Otomatik.\n" +
+            "  Örn: 'Prada çanta' → marka: Prada. 'Otomatik vites' → vites: Otomatik. '2012 model' → yıl: 2012.\n" +
             "- Metinden çıkaramadığın alanları JSON'a KOYma.\n" +
             "- suggestedTitle: Türkçe, çekici, kısa ilan başlığı (maks 100 karakter).\n" +
             "- suggestedDescription: 2-3 cümle detaylı açıklama.\n" +
@@ -320,5 +336,93 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
         }
 
         return (title, desc, price, values.Count > 0 ? values : null);
+    }
+
+    private async Task PersistNewOptionValuesAsync(
+        Guid leafCategoryId,
+        IReadOnlyDictionary<string, string> extractedValues,
+        CancellationToken ct)
+    {
+        try
+        {
+            var attrs = await _db.CategoryAttributes
+                .Include(x => x.Options)
+                .Where(x => x.CategoryId == leafCategoryId)
+                .ToListAsync(ct);
+
+            var added = 0;
+            var newOptionMap = new Dictionary<(Guid attrId, string value), Guid>();
+
+            foreach (var (key, value) in extractedValues)
+            {
+                if (string.IsNullOrWhiteSpace(value) || value is "true" or "false")
+                    continue;
+
+                var attr = attrs.FirstOrDefault(a =>
+                    string.Equals(a.AttributeKey, key, StringComparison.OrdinalIgnoreCase));
+                if (attr is null) continue;
+                if (attr.DataType is AttributeDataType.Bool or AttributeDataType.Money
+                    or AttributeDataType.Decimal or AttributeDataType.Int)
+                    continue;
+
+                var existing = attr.Options.FirstOrDefault(o =>
+                    string.Equals(o.ValueKey, value, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(o.Label, value, StringComparison.OrdinalIgnoreCase));
+                if (existing is not null)
+                {
+                    newOptionMap[(attr.Id, value)] = existing.Id;
+                    continue;
+                }
+
+                Guid? parentOptId = null;
+                if (attr.ParentAttributeId.HasValue)
+                {
+                    var parentAttr = attrs.FirstOrDefault(a => a.Id == attr.ParentAttributeId.Value);
+                    if (parentAttr is not null)
+                    {
+                        var parentKey = parentAttr.AttributeKey;
+                        if (extractedValues.TryGetValue(parentKey, out var parentVal) && !string.IsNullOrWhiteSpace(parentVal))
+                        {
+                            var parentOpt = parentAttr.Options.FirstOrDefault(o =>
+                                string.Equals(o.ValueKey, parentVal, StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(o.Label, parentVal, StringComparison.OrdinalIgnoreCase));
+                            if (parentOpt is not null)
+                                parentOptId = parentOpt.Id;
+                            else if (newOptionMap.TryGetValue((parentAttr.Id, parentVal), out var newParentId))
+                                parentOptId = newParentId;
+                        }
+                    }
+                }
+
+                var maxSort = attr.Options.Count > 0
+                    ? attr.Options.Max(o => o.SortOrder)
+                    : 0;
+
+                var option = new CategoryAttributeOption
+                {
+                    Id = Guid.NewGuid(),
+                    CategoryAttributeId = attr.Id,
+                    ValueKey = value,
+                    Label = value,
+                    SortOrder = maxSort + 1,
+                    ParentOptionId = parentOptId,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                _db.CategoryAttributeOptions.Add(option);
+                attr.Options.Add(option);
+                newOptionMap[(attr.Id, value)] = option.Id;
+                added++;
+            }
+
+            if (added > 0)
+            {
+                await _db.SaveChangesAsync(ct);
+                _logger.LogInformation("Kategori {CatId} için {Count} yeni option değeri kaydedildi.", leafCategoryId, added);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Option değerleri kaydedilirken hata; ana akış etkilenmez.");
+        }
     }
 }
