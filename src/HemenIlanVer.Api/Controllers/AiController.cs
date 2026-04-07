@@ -14,7 +14,6 @@ public sealed class AiController : ControllerBase
     private readonly IAiListingExtractionService _listingAi;
     private readonly IAiListingPartialSuggestionService _partialSuggest;
     private readonly IAiSearchExtractionService _searchAi;
-
     public AiController(
         IAiListingExtractionService listingAi,
         IAiListingPartialSuggestionService partialSuggest,
