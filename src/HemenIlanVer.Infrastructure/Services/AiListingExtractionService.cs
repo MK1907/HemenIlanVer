@@ -3,12 +3,14 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using HemenIlanVer.Application.Abstractions;
+using HemenIlanVer.Application.Exceptions;
 using HemenIlanVer.Contracts.Ai;
 using HemenIlanVer.Domain.Entities;
 using HemenIlanVer.Domain.Enums;
 using HemenIlanVer.Infrastructure.Options;
 using HemenIlanVer.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -21,19 +23,25 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
     private readonly IHttpClientFactory _httpFactory;
     private readonly OpenAiOptions _openAi;
     private readonly ILogger<AiListingExtractionService> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ICategoryEnrichmentQueue _enrichmentQueue;
 
     public AiListingExtractionService(
         AppDbContext db,
         IAiCategoryBootstrapService categoryBootstrap,
         IHttpClientFactory httpFactory,
         IOptions<OpenAiOptions> openAi,
-        ILogger<AiListingExtractionService> logger)
+        ILogger<AiListingExtractionService> logger,
+        IServiceScopeFactory scopeFactory,
+        ICategoryEnrichmentQueue enrichmentQueue)
     {
         _db = db;
         _categoryBootstrap = categoryBootstrap;
         _httpFactory = httpFactory;
         _openAi = openAi.Value;
         _logger = logger;
+        _scopeFactory = scopeFactory;
+        _enrichmentQueue = enrichmentQueue;
     }
 
     public async Task<ListingCategoryDetectResponse> DetectListingCategoryAsync(Guid? userId, ListingCategoryDetectRequest request, CancellationToken cancellationToken = default)
@@ -104,6 +112,11 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "Sen Türkiye'deki sahibinden.com / letgo benzeri ilan sitelerinde ÜRÜN KATEGORİSİ TESPİTİ yapan bir uzmansın.\n\n" +
 
             "=== ADIM ADIM DÜŞÜN ===\n" +
+            "0. ÖNCE metnin gerçek bir ilan olup olmadığını değerlendir:\n" +
+            "   - Anlamsız/rastgele karakterler (örn: 'asdfgh', 'xyzxyz', '123abc', 'aaaaaa') → isValidListing: false\n" +
+            "   - İlan dışı içerik (küfür, kişisel mesaj, test metni, sadece sayı/sembol) → isValidListing: false\n" +
+            "   - Gerçek bir ürün/hizmet/mülk tanımıyorsa → isValidListing: false\n" +
+            "   - Gerçek bir ilan olabilecek metinse → isValidListing: true\n" +
             "1. Önce kullanıcının metninde geçen ÜRÜNü / HİZMETi belirle.\n" +
             "2. Bu ürün hangi sektöre/kategoriye aittir? (örn: çanta, ayakkabı, giysi → Giyim & Aksesuar; telefon, laptop → Elektronik; araba → Araç; ev, daire → Emlak)\n" +
             "3. Mevcut kategorilerden en uygun olanı seç. Yoksa bootstrap ile yeni kategori oluştur.\n\n" +
@@ -127,7 +140,8 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "Alt kategoriler (name → slug, parentSlug): " + JsonSerializer.Serialize(childList) + "\n\n" +
 
             "=== ÇIKTI FORMATI (SADECE JSON) ===\n" +
-            "{\"reasoning\":\"kısa düşünce (ürün nedir, hangi kategoriye ait)\", \"rootSlug\":\"...\", \"suggestedChildSlug\":\"...\"|null, \"confidence\":0.0-1.0, " +
+            "{\"isValidListing\":true/false, \"invalidReason\":\"geçersizse kısa Türkçe açıklama (geçerliyse null)\", " +
+            "\"reasoning\":\"kısa düşünce (ürün nedir, hangi kategoriye ait)\", \"rootSlug\":\"...\", \"suggestedChildSlug\":\"...\"|null, \"confidence\":0.0-1.0, " +
             "\"bootstrap\":{\"needed\":true/false, \"rootName\":\"...\", \"rootSlug\":\"...\", \"childName\":\"...\", \"childSlug\":\"...\", " +
             "\"filters\":[{\"key\":\"...\", \"displayName\":\"...\", \"dataType\":\"String|Int|Decimal|Bool|Enum|Money\", \"required\":true/false, " +
             "\"parentKey\":null|\"başka bir filtre key'i (bağımlılık varsa)\", " +
@@ -182,6 +196,15 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             ?? throw new InvalidOperationException("Boş içerik");
 
         var doc = JsonDocument.Parse(content).RootElement;
+
+        // Geçersiz ilan kontrolü
+        if (doc.TryGetProperty("isValidListing", out var validProp) && validProp.ValueKind == JsonValueKind.False)
+        {
+            var reason = doc.TryGetProperty("invalidReason", out var rp) && rp.ValueKind == JsonValueKind.String
+                ? rp.GetString()
+                : "Girilen metin bir ilan tanımlamıyor.";
+            throw new InvalidListingPromptException(reason!);
+        }
 
         var hasBootstrap = doc.TryGetProperty("bootstrap", out var bCheck);
         var bootNeeded = hasBootstrap && bCheck.TryGetProperty("needed", out var nCheck) ? nCheck.GetRawText() : "N/A";
@@ -286,8 +309,31 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
                 (sugTitle, sugDesc, sugPrice, sugAttrs) =
                     await ExtractAttributeValuesAsync(client, prompt, leafId.Value, ct);
 
+                // Kategoriyi AI çıktısıyla kuyruğa ekle — worker önce tespit edilen değerleri işler
+                _enrichmentQueue.Enqueue(new Application.Abstractions.CategoryEnrichmentJob(
+                    leafId.Value,
+                    sugAttrs));
+
+                // Arka planda kaydet — kullanıcıyı beklettirmez
                 if (sugAttrs is { Count: > 0 })
-                    await PersistNewOptionValuesAsync(leafId.Value, sugAttrs, ct);
+                {
+                    var capturedLeafId = leafId.Value;
+                    var capturedAttrs = sugAttrs;
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await using var scope = _scopeFactory.CreateAsyncScope();
+                            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                            var svc = new AiOptionPersister(db, _logger);
+                            await svc.PersistAsync(capturedLeafId, capturedAttrs, CancellationToken.None);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Arka plan option kaydetme başarısız.");
+                        }
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -321,6 +367,14 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
         if (attrs.Count == 0)
             return (null, null, null, null);
 
+        // Kod seviyesinde Enum doğrulama için options map
+        var attrOptionMap = attrs
+            .Where(a => a.DataType == AttributeDataType.Enum || a.Options.Count > 0)
+            .ToDictionary(
+                a => a.AttributeKey,
+                a => a.Options.Select(o => o.ValueKey).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            );
+
         var attrSpec = attrs.Select(a => new
         {
             key = a.AttributeKey,
@@ -330,22 +384,21 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             options = a.Options.OrderBy(o => o.SortOrder).Select(o => new { o.ValueKey, o.Label }).ToList()
         }).ToList();
 
+        // Tek AI çağrısında çıkar + doğrula (options listesi kılavuz, zorunlu değil)
         var system =
-            "Sen Türkiye ilan sitelerinde ilan metni ayrıştırıcısın.\n" +
-            "Kullanıcının yazdığı metne göre aşağıdaki kategori filtre alanlarının değerlerini çıkar.\n\n" +
+            "Sen Türkiye ilan sitelerinde ilan metni ayrıştırıcı ve veri kalite uzmanısın. Yanıtını JSON formatında ver.\n\n" +
             "ALANLAR: " + JsonSerializer.Serialize(attrSpec) + "\n\n" +
             "KURALLAR:\n" +
-            "- Enum tipli alanlar: Eğer verilen options içinde uygun bir değer varsa onu seç. Yoksa metinden çıkardığın gerçek değeri yaz (yeni değer olabilir).\n" +
-            "- String tipli alanlar: Metinden çıkardığın değeri serbest yaz.\n" +
-            "- Int / Decimal / Money → sadece sayı.\n" +
-            "- Bool → true / false.\n" +
-            "- Metinden DOĞRUDAN veya MANTIKSAL ÇIKARIM ile belirleyebildiğin tüm alanları doldur.\n" +
-            "  Örn: 'Prada çanta' → marka: Prada. 'Otomatik vites' → vites: Otomatik. '2012 model' → yıl: 2012.\n" +
-            "- Metinden çıkaramadığın alanları JSON'a KOYma.\n" +
-            "- suggestedTitle: Türkçe, çekici, kısa ilan başlığı (maks 100 karakter).\n" +
-            "- suggestedDescription: 2-3 cümle detaylı açıklama.\n" +
-            "- suggestedPrice: TRY, tahmin edebiliyorsan; edemezsen null.\n\n" +
-            "SADECE geçerli JSON: {\"suggestedTitle\":\"...\",\"suggestedDescription\":\"...\",\"suggestedPrice\":null,\"attributes\":{\"key\":\"value\",...}}";
+            "1. Enum alanlar (options listesi varsa) → önce listeden valueKey ile seç. " +
+               "Listede yoksa ama gerçek ve bilinen bir sektör değeriyse yine de ekle.\n" +
+            "2. Üretici/marka alanı için: metinde geçen ifade gerçek bir üretici firma değilse (paket adı, slogan, donanım kodu vb.) O ALANI EKLEME.\n" +
+            "3. String: serbest metin. Int/Decimal/Money: sadece sayı. Bool: true/false.\n" +
+            "4. Metinden çıkaramadığın veya emin olmadığın alanları EKLEME.\n\n" +
+            "JSON ÇIKTI FORMATI: {\"suggestedTitle\":\"...\",\"suggestedDescription\":\"...\",\"suggestedPrice\":null,\"attributes\":{\"key\":\"value\",...}}\n" +
+            "- suggestedTitle: Türkçe, kısa ve çekici (maks 100 karakter)\n" +
+            "- suggestedDescription: 2-3 cümle\n" +
+            "- suggestedPrice: TRY tahmini, bilinmiyorsa null\n" +
+            "- attributes: SADECE gerçek, bilinen sektör değerleri — kategori ne olursa olsun geçerli kural";
 
         var body = new
         {
@@ -374,7 +427,7 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             if (sp.ValueKind == JsonValueKind.Number && sp.TryGetDecimal(out var d)) price = d;
         }
 
-        var values = new Dictionary<string, string>();
+        var rawValues = new Dictionary<string, string>();
         if (doc.TryGetProperty("attributes", out var attrObj) && attrObj.ValueKind == JsonValueKind.Object)
         {
             foreach (var prop in attrObj.EnumerateObject())
@@ -387,22 +440,36 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
                     JsonValueKind.False => "false",
                     _ => null
                 };
-                if (val is not null)
-                    values[prop.Name] = val;
+                if (val is null) continue;
+
+                // Enum alanı: listede yoksa AI'ya güven (prompt zaten sahte değerleri filtreler),
+                // değeri kabul et — arka planda DB'ye kaydedilecek.
+                if (attrOptionMap.TryGetValue(prop.Name, out var validOptions)
+                    && validOptions.Count > 0
+                    && !validOptions.Contains(val))
+                {
+                    _logger.LogInformation(
+                        "Enum '{Key}'='{Val}' options listesinde yok; AI'ya güvenilerek kabul edildi.",
+                        prop.Name, val);
+                }
+
+                rawValues[prop.Name] = val;
             }
         }
 
-        return (title, desc, price, values.Count > 0 ? values : null);
+        return (title, desc, price, rawValues.Count > 0 ? rawValues : null);
     }
 
-    private async Task PersistNewOptionValuesAsync(
-        Guid leafCategoryId,
-        IReadOnlyDictionary<string, string> extractedValues,
-        CancellationToken ct)
+}
+
+/// <summary>Yeni option değerlerini arka planda kaydetmek için bağımsız scope'ta çalışan yardımcı.</summary>
+internal sealed class AiOptionPersister(AppDbContext db, ILogger logger)
+{
+    public async Task PersistAsync(Guid leafCategoryId, IReadOnlyDictionary<string, string> extractedValues, CancellationToken ct)
     {
         try
         {
-            var attrs = await _db.CategoryAttributes
+            var attrs = await db.CategoryAttributes
                 .Include(x => x.Options)
                 .Where(x => x.CategoryId == leafCategoryId)
                 .ToListAsync(ct);
@@ -412,49 +479,33 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
 
             foreach (var (key, value) in extractedValues)
             {
-                if (string.IsNullOrWhiteSpace(value) || value is "true" or "false")
-                    continue;
+                if (string.IsNullOrWhiteSpace(value) || value is "true" or "false") continue;
 
-                var attr = attrs.FirstOrDefault(a =>
-                    string.Equals(a.AttributeKey, key, StringComparison.OrdinalIgnoreCase));
+                var attr = attrs.FirstOrDefault(a => string.Equals(a.AttributeKey, key, StringComparison.OrdinalIgnoreCase));
                 if (attr is null) continue;
                 if (attr.DataType is AttributeDataType.Bool or AttributeDataType.Money
-                    or AttributeDataType.Decimal or AttributeDataType.Int)
-                    continue;
+                    or AttributeDataType.Decimal or AttributeDataType.Int) continue;
 
                 var existing = attr.Options.FirstOrDefault(o =>
                     string.Equals(o.ValueKey, value, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(o.Label, value, StringComparison.OrdinalIgnoreCase));
-                if (existing is not null)
-                {
-                    newOptionMap[(attr.Id, value)] = existing.Id;
-                    continue;
-                }
+                if (existing is not null) { newOptionMap[(attr.Id, value)] = existing.Id; continue; }
 
                 Guid? parentOptId = null;
                 if (attr.ParentAttributeId.HasValue)
                 {
                     var parentAttr = attrs.FirstOrDefault(a => a.Id == attr.ParentAttributeId.Value);
-                    if (parentAttr is not null)
+                    if (parentAttr is not null && extractedValues.TryGetValue(parentAttr.AttributeKey, out var parentVal) && !string.IsNullOrWhiteSpace(parentVal))
                     {
-                        var parentKey = parentAttr.AttributeKey;
-                        if (extractedValues.TryGetValue(parentKey, out var parentVal) && !string.IsNullOrWhiteSpace(parentVal))
-                        {
-                            var parentOpt = parentAttr.Options.FirstOrDefault(o =>
-                                string.Equals(o.ValueKey, parentVal, StringComparison.OrdinalIgnoreCase)
-                                || string.Equals(o.Label, parentVal, StringComparison.OrdinalIgnoreCase));
-                            if (parentOpt is not null)
-                                parentOptId = parentOpt.Id;
-                            else if (newOptionMap.TryGetValue((parentAttr.Id, parentVal), out var newParentId))
-                                parentOptId = newParentId;
-                        }
+                        var parentOpt = parentAttr.Options.FirstOrDefault(o =>
+                            string.Equals(o.ValueKey, parentVal, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(o.Label, parentVal, StringComparison.OrdinalIgnoreCase));
+                        if (parentOpt is not null) parentOptId = parentOpt.Id;
+                        else if (newOptionMap.TryGetValue((parentAttr.Id, parentVal), out var npId)) parentOptId = npId;
                     }
                 }
 
-                var maxSort = attr.Options.Count > 0
-                    ? attr.Options.Max(o => o.SortOrder)
-                    : 0;
-
+                var maxSort = attr.Options.Count > 0 ? attr.Options.Max(o => o.SortOrder) : 0;
                 var option = new CategoryAttributeOption
                 {
                     Id = Guid.NewGuid(),
@@ -465,7 +516,7 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
                     ParentOptionId = parentOptId,
                     CreatedAt = DateTimeOffset.UtcNow
                 };
-                _db.CategoryAttributeOptions.Add(option);
+                db.CategoryAttributeOptions.Add(option);
                 attr.Options.Add(option);
                 newOptionMap[(attr.Id, value)] = option.Id;
                 added++;
@@ -473,13 +524,13 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
 
             if (added > 0)
             {
-                await _db.SaveChangesAsync(ct);
-                _logger.LogInformation("Kategori {CatId} için {Count} yeni option değeri kaydedildi.", leafCategoryId, added);
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("Arka plan: kategori {CatId} için {Count} yeni option kaydedildi.", leafCategoryId, added);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Option değerleri kaydedilirken hata; ana akış etkilenmez.");
+            logger.LogWarning(ex, "Arka plan option kaydetme hatası.");
         }
     }
 }

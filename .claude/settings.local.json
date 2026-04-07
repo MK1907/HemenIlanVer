@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(curl -s -X POST http://localhost:8080/api/auth/login -H \"Content-Type: application/json\" -d \"{\\\\\"email\\\\\":\\\\\"demo@hemenilanver.local\\\\\",\\\\\"password\\\\\":\\\\\"Demo1234!\\\\\"}\")",
+      "Bash(curl -s -X POST http://localhost:8080/api/auth/register -H \"Content-Type: application/json\" -d \"{\\\\\"email\\\\\":\\\\\"test@test.com\\\\\",\\\\\"password\\\\\":\\\\\"Test1234!\\\\\",\\\\\"name\\\\\":\\\\\"Test\\\\\"}\")",
+      "Bash(curl -s \"http://localhost:5000/api/listings/18726ec0-484b-430a-a72f-8a7ebf61f0f3\")",
+      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"http://localhost:5000/api/listings/18726ec0-484b-430a-a72f-8a7ebf61f0f3\")",
+      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"http://localhost:8080/api/listings/18726ec0-484b-430a-a72f-8a7ebf61f0f3\")",
+      "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"http://localhost:3000/api/listings/18726ec0-484b-430a-a72f-8a7ebf61f0f3\")",
+      "Bash(docker rmi:*)"
+    ]
+  }
+}

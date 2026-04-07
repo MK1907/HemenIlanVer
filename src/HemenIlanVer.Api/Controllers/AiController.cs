@@ -1,4 +1,5 @@
 using HemenIlanVer.Application.Abstractions;
+using HemenIlanVer.Application.Exceptions;
 using HemenIlanVer.Api.Extensions;
 using HemenIlanVer.Contracts.Ai;
 using Microsoft.AspNetCore.Authorization;
@@ -28,8 +29,15 @@ public sealed class AiController : ControllerBase
     [Authorize]
     public async Task<ActionResult<ListingCategoryDetectResponse>> DetectListingCategory([FromBody] ListingCategoryDetectRequest request, CancellationToken ct)
     {
-        var result = await _listingAi.DetectListingCategoryAsync(User.GetUserId(), request, ct);
-        return Ok(result);
+        try
+        {
+            var result = await _listingAi.DetectListingCategoryAsync(User.GetUserId(), request, ct);
+            return Ok(result);
+        }
+        catch (InvalidListingPromptException ex)
+        {
+            return UnprocessableEntity(new { error = ex.Reason });
+        }
     }
 
     /// <summary>Yazarken kısmi metne göre olası ilan yönleri (Türkçe kısa öneriler).</summary>

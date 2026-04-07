@@ -112,11 +112,8 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
                 if (!Enum.TryParse<AttributeDataType>(dtStr, true, out var dt))
                     dt = AttributeDataType.String;
 
-                if (dt == AttributeDataType.Enum)
-                {
-                    if (!el.TryGetProperty("options", out var opts) || opts.ValueKind != JsonValueKind.Array || opts.GetArrayLength() < 2)
-                        dt = AttributeDataType.String;
-                }
+                // Enum tipini koruyoruz; başlangıçta seçeneği olmasa bile
+                // CategoryEnrichmentWorker arka planda doldurur.
 
                 var parentKeyRaw = GetString(el, "parentKey") ?? GetString(el, "parent_key");
                 Guid? parentAttrId = null;
@@ -158,11 +155,6 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
                 var dtStr = GetString(el, "dataType") ?? GetString(el, "data_type") ?? GetString(el, "type") ?? "String";
                 if (!Enum.TryParse<AttributeDataType>(dtStr, true, out var dt))
                     dt = AttributeDataType.String;
-                if (dt == AttributeDataType.Enum)
-                {
-                    if (!el.TryGetProperty("options", out var opts2) || opts2.ValueKind != JsonValueKind.Array || opts2.GetArrayLength() < 2)
-                        dt = AttributeDataType.String;
-                }
 
                 if (!keyToAttrId.TryGetValue(key, out var attrId)) continue;
                 if (dt != AttributeDataType.Enum) continue;

@@ -51,6 +51,10 @@ public static class DependencyInjection
         services.AddScoped<IListingIndexService, ListingIndexService>();
         services.AddScoped<IRagSearchService, RagSearchService>();
 
+        // Kategori zenginleştirme kuyruğu + arka plan işçisi
+        services.AddSingleton<ICategoryEnrichmentQueue, CategoryEnrichmentQueue>();
+        services.AddHostedService<CategoryEnrichmentWorker>();
+
         return services;
     }
 
