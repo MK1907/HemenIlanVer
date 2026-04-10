@@ -2,6 +2,7 @@ using System.Text;
 using HemenIlanVer.Application.Abstractions;
 using HemenIlanVer.Infrastructure.Identity;
 using HemenIlanVer.Infrastructure.Options;
+using HemenIlanVer.Infrastructure.Services;
 using HemenIlanVer.Infrastructure.Persistence;
 using HemenIlanVer.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -19,6 +20,7 @@ public static class DependencyInjection
     {
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
+        services.Configure<CloudflareR2Options>(configuration.GetSection(CloudflareR2Options.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString("Default")));
@@ -50,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<IEmbeddingService, EmbeddingService>();
         services.AddScoped<IListingIndexService, ListingIndexService>();
         services.AddScoped<IRagSearchService, RagSearchService>();
+        services.AddSingleton<IStorageService, CloudflareR2StorageService>();
 
         // Kategori zenginleştirme kuyruğu + arka plan işçisi
         services.AddSingleton<ICategoryEnrichmentQueue, CategoryEnrichmentQueue>();

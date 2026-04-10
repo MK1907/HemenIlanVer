@@ -212,6 +212,22 @@ public sealed class ListingService : IListingService
             });
         }
 
+        if (request.ImageUrls is { Count: > 0 })
+        {
+            for (var i = 0; i < request.ImageUrls.Count; i++)
+            {
+                _db.ListingImages.Add(new ListingImage
+                {
+                    Id = Guid.NewGuid(),
+                    ListingId = listing.Id,
+                    Url = request.ImageUrls[i],
+                    SortOrder = i,
+                    IsPrimary = i == 0,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
 
         if (listing.Status == ListingStatus.Published)

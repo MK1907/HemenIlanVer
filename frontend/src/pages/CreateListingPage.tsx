@@ -33,6 +33,10 @@ export function CreateListingPage() {
   const [listingType] = useState('Satilik');
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [primaryImageUrl, setPrimaryImageUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [detect, setDetect] = useState<DetectResult | null>(null);
   const [detectError, setDetectError] = useState<string | null>(null);
   const [attrRefreshKey, setAttrRefreshKey] = useState(0);
@@ -114,6 +118,42 @@ export function CreateListingPage() {
     }
   }
 
+  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    setImageError(null);
+    setImageUploading(true);
+    try {
+      const uploaded: string[] = [];
+      for (const file of files) {
+        const form = new FormData();
+        form.append('file', file);
+        const { data } = await api.post<{ url: string }>('/api/images/upload', form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        uploaded.push(data.url);
+      }
+      setImageUrls((prev) => {
+        const next = [...prev, ...uploaded];
+        if (!primaryImageUrl && next.length > 0) setPrimaryImageUrl(next[0]);
+        return next;
+      });
+    } catch {
+      setImageError('Fotoğraf yüklenirken hata oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setImageUploading(false);
+      e.target.value = '';
+    }
+  }
+
+  function removeImage(url: string) {
+    setImageUrls((prev) => {
+      const next = prev.filter((u) => u !== url);
+      if (primaryImageUrl === url) setPrimaryImageUrl(next[0] ?? null);
+      return next;
+    });
+  }
+
   async function publish(e: FormEvent) {
     e.preventDefault();
     if (!user || !categoryId) return;
@@ -126,6 +166,12 @@ export function CreateListingPage() {
         cityId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0001',
         districtId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0002',
         publish: true,
+        imageUrls: imageUrls.length > 0
+          ? [
+              ...(primaryImageUrl ? [primaryImageUrl] : []),
+              ...imageUrls.filter((u) => u !== primaryImageUrl),
+            ]
+          : undefined,
         attributes: attrs.map((a) => {
           const raw = attrValues[a.attributeKey] ?? '';
           let valueText: string | undefined;
@@ -404,6 +450,63 @@ export function CreateListingPage() {
                       inputMode="decimal"
                       placeholder="0,00"
                     />
+                  </div>
+
+                  {/* Image upload */}
+                  <div className="cl-field">
+                    <label className="cl-field__label">Fotoğraflar</label>
+                    <label className="cl-img-upload-label">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        multiple
+                        onChange={handleImageChange}
+                        disabled={imageUploading}
+                        style={{ display: 'none' }}
+                      />
+                      {imageUploading ? (
+                        <><span className="cl-spinner cl-spinner--sm" /> Yükleniyor…</>
+                      ) : (
+                        <>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                          </svg>
+                          Fotoğraf Ekle
+                        </>
+                      )}
+                    </label>
+                    {imageError && <p className="cl-hint" style={{ color: '#e53e3e' }}>{imageError}</p>}
+                    {imageUrls.length > 0 && (
+                      <div className="cl-img-preview-grid">
+                        {imageUrls.map((url, i) => {
+                          const isPrimary = url === primaryImageUrl;
+                          return (
+                            <div key={url} className={`cl-img-preview-item${isPrimary ? ' cl-img-preview-item--primary' : ''}`}>
+                              <img src={url} alt={`Fotoğraf ${i + 1}`} />
+                              {isPrimary
+                                ? <span className="cl-img-primary-badge">⭐ Vitrin</span>
+                                : (
+                                  <button
+                                    type="button"
+                                    className="cl-img-vitrin-btn"
+                                    onClick={() => setPrimaryImageUrl(url)}
+                                    title="Vitrin yap"
+                                  >Vitrin</button>
+                                )
+                              }
+                              <button
+                                type="button"
+                                className="cl-img-remove-btn"
+                                onClick={() => removeImage(url)}
+                                aria-label="Kaldır"
+                              >✕</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   <button

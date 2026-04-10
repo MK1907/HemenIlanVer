@@ -39,6 +39,11 @@ services:
       Cors__Origins__2: http://localhost
       Cors__Origins__3: http://127.0.0.1
       OpenAI__ApiKey: ${OPENAI_API_KEY:-}
+      CloudflareR2__AccountId: ${R2_ACCOUNT_ID:-8c631c4fcc61b79606479d54e64b485e}
+      CloudflareR2__AccessKeyId: ${R2_ACCESS_KEY_ID:-}
+      CloudflareR2__SecretAccessKey: ${R2_SECRET_ACCESS_KEY:-}
+      CloudflareR2__BucketName: ${R2_BUCKET_NAME:-images}
+      CloudflareR2__PublicBaseUrl: ${R2_PUBLIC_BASE_URL:-}
     depends_on:
       db:
         condition: service_healthy

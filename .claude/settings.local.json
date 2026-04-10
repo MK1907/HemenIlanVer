@@ -9,7 +9,8 @@
       "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"http://localhost:5000/api/listings/18726ec0-484b-430a-a72f-8a7ebf61f0f3\")",
       "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"http://localhost:8080/api/listings/18726ec0-484b-430a-a72f-8a7ebf61f0f3\")",
       "Bash(curl -s -w \"\\\\nHTTP:%{http_code}\" \"http://localhost:3000/api/listings/18726ec0-484b-430a-a72f-8a7ebf61f0f3\")",
-      "Bash(docker rmi:*)"
+      "Bash(docker rmi:*)",
+      "Bash(xargs grep:*)"
     ]
   }
 }

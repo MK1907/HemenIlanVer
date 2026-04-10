@@ -11,7 +11,8 @@ public sealed record CreateListingRequest(
     Guid? CityId,
     Guid? DistrictId,
     IReadOnlyList<ListingAttributeValueInputDto> Attributes,
-    bool Publish);
+    bool Publish,
+    IReadOnlyList<string>? ImageUrls = null);
 public sealed record ListingSummaryDto(Guid Id, string Title, decimal? Price, string Currency, string CityName, string? DistrictName, string CategoryName, DateTimeOffset CreatedAt, string? PrimaryImageUrl, int ViewCount);
 public sealed record ListingDetailDto(
     Guid Id,
