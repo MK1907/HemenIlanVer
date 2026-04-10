@@ -38,6 +38,8 @@ export function CreateListingPage() {
   const [primaryImageUrl, setPrimaryImageUrl] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [photoExtracting, setPhotoExtracting] = useState(false);
+  const [photoExtractMsg, setPhotoExtractMsg] = useState<string | null>(null);
   const [detect, setDetect] = useState<DetectResult | null>(null);
   const [detectError, setDetectError] = useState<string | null>(null);
   const [attrRefreshKey, setAttrRefreshKey] = useState(0);
@@ -45,6 +47,7 @@ export function CreateListingPage() {
   const pollTimers = useRef<number[]>([]);
   const enrichPollCount = useRef(0);
   const detailRef = useRef<HTMLDivElement>(null);
+  const pendingAiAttrs = useRef<Record<string, string> | null>(null);
 
   function refreshCategories() {
     api.get<Cat[]>('/api/categories').then((r) => setTree(r.data));
@@ -56,16 +59,21 @@ export function CreateListingPage() {
     if (!categoryId) { setAttrs([]); setAttrValues({}); return; }
     api.get<{ attributes: Attr[] }>(`/api/categories/${categoryId}/attributes`).then((r) => {
       setAttrs(r.data.attributes);
+      // Capture AI pending values (set before this fetch was triggered)
+      const aiValues = pendingAiAttrs.current ?? {};
+      pendingAiAttrs.current = null;
       setAttrValues((prev) => {
+        // Merge: prev (existing user edits) wins over AI values, AI values win over empty
+        const merged = { ...aiValues, ...prev };
         const next: Record<string, string> = {};
         for (const a of r.data.attributes) {
-          const prevVal = prev[a.attributeKey];
-          if (!prevVal) continue;
+          const raw = merged[a.attributeKey];
+          if (!raw) continue;
           const matchedOpt = a.options.find(
-            (o) => o.valueKey.toLowerCase() === prevVal.toLowerCase() ||
-                   o.label.toLowerCase() === prevVal.toLowerCase(),
+            (o) => o.valueKey.toLowerCase() === raw.toLowerCase() ||
+                   o.label.toLowerCase() === raw.toLowerCase(),
           );
-          next[a.attributeKey] = matchedOpt ? matchedOpt.valueKey : prevVal;
+          next[a.attributeKey] = matchedOpt ? matchedOpt.valueKey : raw;
         }
         return next;
       });
@@ -99,7 +107,11 @@ export function CreateListingPage() {
       if (data.suggestedTitle) setTitle(data.suggestedTitle);
       if (data.suggestedDescription) setDescription(data.suggestedDescription);
       if (data.suggestedPrice) setPrice(String(data.suggestedPrice));
-      if (data.suggestedAttributeValues) setAttrValues(data.suggestedAttributeValues);
+      // Store AI attr values in ref so the attrs-fetch useEffect can apply them
+      // after loading ALL attributes from DB (not just AI-found ones)
+      if (data.suggestedAttributeValues) {
+        pendingAiAttrs.current = data.suggestedAttributeValues;
+      }
       pollTimers.current.forEach(clearTimeout);
       pollTimers.current = [];
       enrichPollCount.current = 0;
@@ -161,6 +173,45 @@ export function CreateListingPage() {
       if (primaryImageUrl === url) setPrimaryImageUrl(next[0] ?? null);
       return next;
     });
+  }
+
+  async function extractFromPhotos() {
+    if (!categoryId || imageUrls.length === 0) return;
+    // Hangi slug'ı kullanacağız?
+    let catSlug = '';
+    for (const root of tree) {
+      for (const c of (root.children ?? [])) {
+        if (c.id === categoryId) { catSlug = c.slug; break; }
+      }
+    }
+    if (!catSlug) return;
+
+    setPhotoExtracting(true);
+    setPhotoExtractMsg(null);
+    try {
+      const { data } = await api.post<Record<string, string>>(
+        '/api/listings/extract-attributes-from-photos',
+        { imageUrls, categorySlug: catSlug }
+      );
+      const found = Object.keys(data).length;
+      if (found === 0) {
+        setPhotoExtractMsg('Fotoğraflardan özellik tespit edilemedi.');
+        return;
+      }
+      // Sadece boş olan alanları doldur, kullanıcının doldurduklarına dokunma
+      setAttrValues((prev) => {
+        const next = { ...prev };
+        for (const [key, val] of Object.entries(data)) {
+          if (!next[key]) next[key] = val;
+        }
+        return next;
+      });
+      setPhotoExtractMsg(`${found} özellik fotoğraflardan tespit edildi ve dolduruldu.`);
+    } catch {
+      setPhotoExtractMsg('Fotoğraf analizi sırasında hata oluştu.');
+    } finally {
+      setPhotoExtracting(false);
+    }
   }
 
   async function publish(e: FormEvent) {
@@ -342,7 +393,7 @@ export function CreateListingPage() {
       </section>
 
       {/* ── Step 2 & 3: Details ── */}
-      {detect && (
+      {(detect || attrs.length > 0) && (
         <div className="cl-detail" ref={detailRef}>
           <div className="cl-detail__inner">
 
@@ -506,6 +557,31 @@ export function CreateListingPage() {
                       )}
                     </label>
                     {imageError && <p className="cl-hint" style={{ color: '#e53e3e' }}>{imageError}</p>}
+                    {imageUrls.length > 0 && categoryId && (
+                      <button
+                        type="button"
+                        className="cl-photo-extract-btn"
+                        onClick={extractFromPhotos}
+                        disabled={photoExtracting}
+                      >
+                        {photoExtracting ? (
+                          <><span className="cl-spinner cl-spinner--sm" /> Fotoğraflar analiz ediliyor…</>
+                        ) : (
+                          <>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="15" height="15">
+                              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                              <path d="M11 8v6M8 11h6"/>
+                            </svg>
+                            Fotoğraflardan Özellikleri Tespit Et
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {photoExtractMsg && (
+                      <p className="cl-hint" style={{ color: photoExtractMsg.includes('tespit edildi') ? '#38a169' : '#718096' }}>
+                        {photoExtractMsg}
+                      </p>
+                    )}
                     {imageUrls.length > 0 && (
                       <div className="cl-img-preview-grid">
                         {imageUrls.map((url, i) => {

@@ -29,10 +29,33 @@ type SalePrediction = {
 type PhotoAnalysis = {
   overallConditionScore: number;
   conditionLabel: string;
+  detectedBrand: string | null;
+  detectedModel: string | null;
+  detectedYear: string | null;
+  detectedColor: string | null;
+  detectedBodyType: string | null;
+  detectedFuelType: string | null;
+  detectedTransmission: string | null;
+  detectedEngineSize: string | null;
+  detectedKmApprox: string | null;
   hasScratchOrDent: boolean;
   hasPaintDifference: boolean;
-  suspectedTaxiOrRental: boolean;
+  hasGlassDamage: boolean;
+  hasWheelOrTireDamage: boolean;
+  hasRustOrCorrosion: boolean;
+  hasBodyDeformation: boolean;
   interiorDamage: boolean;
+  hasSeatWear: boolean;
+  hasDashboardDamage: boolean;
+  hasCeilingStain: boolean;
+  suspectedTaxiOrRental: boolean;
+  suspectedAccidentHistory: boolean;
+  suspectedKmTampering: boolean;
+  hasHiddenAreas: boolean;
+  photoQualityScore: number;
+  isProfessionalPhoto: boolean;
+  brandMismatch: boolean;
+  brandMismatchDetail: string | null;
   findings: string[];
   warnings: string[];
   summary: string;
@@ -180,49 +203,123 @@ export function ListingDetailPage() {
                 </div>
               )}
               {photoError && <p className="paa-error">{photoError}</p>}
-              {photoAnalysis && (
-                <div className={`paa-card paa-card--${photoAnalysis.overallConditionScore >= 70 ? 'good' : photoAnalysis.overallConditionScore >= 45 ? 'mid' : 'bad'}`}>
-                  <div className="paa-header">
-                    <span className="paa-icon">🔍</span>
-                    <div>
-                      <span className="paa-title">Fotoğraf Analizi</span>
-                      <span className={`paa-badge paa-badge--${photoAnalysis.overallConditionScore >= 70 ? 'good' : photoAnalysis.overallConditionScore >= 45 ? 'mid' : 'bad'}`}>
-                        {photoAnalysis.conditionLabel}
-                      </span>
+              {photoAnalysis && (() => {
+                const sc = photoAnalysis.overallConditionScore;
+                const tier = sc >= 75 ? 'good' : sc >= 55 ? 'mid' : 'bad';
+                const flag = (val: boolean, label: string, alert = false) => (
+                  <span className={`paa-flag ${val ? (alert ? 'paa-flag--alert' : 'paa-flag--warn') : 'paa-flag--ok'}`}>
+                    {val ? (alert ? '🚨' : '⚠️') : '✓'} {label}
+                  </span>
+                );
+                const detected = [
+                  photoAnalysis.detectedBrand && `${photoAnalysis.detectedBrand}`,
+                  photoAnalysis.detectedModel,
+                  photoAnalysis.detectedYear,
+                  photoAnalysis.detectedColor,
+                  photoAnalysis.detectedBodyType,
+                  photoAnalysis.detectedFuelType,
+                  photoAnalysis.detectedTransmission,
+                  photoAnalysis.detectedEngineSize,
+                  photoAnalysis.detectedKmApprox,
+                ].filter(Boolean);
+                return (
+                  <div className={`paa-card paa-card--${tier}`}>
+                    {/* MARKA UYUMSUZLUĞU — en üstte, kırmızı */}
+                    {photoAnalysis.brandMismatch && (
+                      <div className="paa-mismatch-alert">
+                        <span className="paa-mismatch-icon">🚨</span>
+                        <div>
+                          <strong>FOTOĞRAF İLANLA UYUŞMUYOR!</strong>
+                          <p>{photoAnalysis.brandMismatchDetail ?? 'Fotoğraftaki araç beyan edilen marka/modelden farklı.'}</p>
+                        </div>
+                      </div>
+                    )}
+                    {/* Header */}
+                    <div className="paa-header">
+                      <span className="paa-icon">🔍</span>
+                      <div>
+                        <span className="paa-title">AI Ekspertiz Analizi</span>
+                        <span className={`paa-badge paa-badge--${tier}`}>{photoAnalysis.conditionLabel}</span>
+                      </div>
+                      <div className="paa-score">{sc}<span>/100</span></div>
                     </div>
-                    <div className="paa-score">{photoAnalysis.overallConditionScore}<span>/100</span></div>
+                    <div className="paa-bar-wrap">
+                      <div className="paa-bar" style={{ '--paa-pct': `${sc}%` } as React.CSSProperties} />
+                    </div>
+
+                    {/* Fotoğraf kalitesi */}
+                    <div className="paa-photo-q">
+                      <span>📸 Fotoğraf kalitesi: <b>{photoAnalysis.photoQualityScore}/100</b></span>
+                      {photoAnalysis.isProfessionalPhoto && <span className="paa-pro-badge">Profesyonel</span>}
+                    </div>
+
+                    {/* Tespit edilen araç bilgileri */}
+                    {detected.length > 0 && (
+                      <div className="paa-detected">
+                        <div className="paa-section-title">🚗 Fotoğraftan Tespit</div>
+                        <div className="paa-detected-grid">
+                          {photoAnalysis.detectedBrand && <div className="paa-det-item"><span>Marka</span><b>{photoAnalysis.detectedBrand}</b></div>}
+                          {photoAnalysis.detectedModel && <div className="paa-det-item"><span>Model</span><b>{photoAnalysis.detectedModel}</b></div>}
+                          {photoAnalysis.detectedYear && <div className="paa-det-item"><span>Yıl</span><b>{photoAnalysis.detectedYear}</b></div>}
+                          {photoAnalysis.detectedColor && <div className="paa-det-item"><span>Renk</span><b>{photoAnalysis.detectedColor}</b></div>}
+                          {photoAnalysis.detectedBodyType && <div className="paa-det-item"><span>Kasa</span><b>{photoAnalysis.detectedBodyType}</b></div>}
+                          {photoAnalysis.detectedFuelType && <div className="paa-det-item"><span>Yakıt</span><b>{photoAnalysis.detectedFuelType}</b></div>}
+                          {photoAnalysis.detectedTransmission && <div className="paa-det-item"><span>Vites</span><b>{photoAnalysis.detectedTransmission}</b></div>}
+                          {photoAnalysis.detectedEngineSize && <div className="paa-det-item"><span>Motor</span><b>{photoAnalysis.detectedEngineSize}</b></div>}
+                          {photoAnalysis.detectedKmApprox && <div className="paa-det-item"><span>KM</span><b>{photoAnalysis.detectedKmApprox}</b></div>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Dış durum */}
+                    <div className="paa-section-title">🔧 Dış Durum</div>
+                    <div className="paa-flags">
+                      {flag(photoAnalysis.hasScratchOrDent, 'Çizik/Göçük')}
+                      {flag(photoAnalysis.hasPaintDifference, 'Boya Farkı')}
+                      {flag(photoAnalysis.hasGlassDamage, 'Cam Hasarı')}
+                      {flag(photoAnalysis.hasWheelOrTireDamage, 'Jant/Lastik')}
+                      {flag(photoAnalysis.hasRustOrCorrosion, 'Pas/Korozyon')}
+                      {flag(photoAnalysis.hasBodyDeformation, 'Kaporta Ezik')}
+                    </div>
+
+                    {/* İç mekan */}
+                    <div className="paa-section-title">🪑 İç Mekan</div>
+                    <div className="paa-flags">
+                      {flag(photoAnalysis.interiorDamage, 'İç Hasar')}
+                      {flag(photoAnalysis.hasSeatWear, 'Koltuk Yıpranma')}
+                      {flag(photoAnalysis.hasDashboardDamage, 'Gösterge Hasarı')}
+                      {flag(photoAnalysis.hasCeilingStain, 'Tavan Lekesi')}
+                    </div>
+
+                    {/* Şüpheli durumlar */}
+                    <div className="paa-section-title">🚨 Şüpheli Durumlar</div>
+                    <div className="paa-flags">
+                      {flag(photoAnalysis.suspectedTaxiOrRental, 'Taksi/Kiralık', true)}
+                      {flag(photoAnalysis.suspectedAccidentHistory, 'Kaza Geçmişi', true)}
+                      {flag(photoAnalysis.suspectedKmTampering, 'KM Müdahalesi', true)}
+                      {flag(photoAnalysis.hasHiddenAreas, 'Gizlenen Alan', true)}
+                    </div>
+
+                    {/* Tespitler */}
+                    {photoAnalysis.findings.length > 0 && (
+                      <>
+                        <div className="paa-section-title">📋 Tespitler</div>
+                        <ul className="paa-list paa-list--findings">
+                          {photoAnalysis.findings.map((f, i) => <li key={i}>{f}</li>)}
+                        </ul>
+                      </>
+                    )}
+                    {photoAnalysis.warnings.length > 0 && (
+                      <ul className="paa-list paa-list--warnings">
+                        {photoAnalysis.warnings.map((w, i) => <li key={i}>⚠️ {w}</li>)}
+                      </ul>
+                    )}
+
+                    <p className="paa-summary">{photoAnalysis.summary}</p>
+                    <button className="paa-retry" type="button" onClick={runPhotoAnalysis}>Yeniden Analiz Et</button>
                   </div>
-                  <div className="paa-bar-wrap">
-                    <div className="paa-bar" style={{ '--paa-pct': `${photoAnalysis.overallConditionScore}%` } as React.CSSProperties} />
-                  </div>
-                  <div className="paa-flags">
-                    <span className={`paa-flag ${photoAnalysis.hasScratchOrDent ? 'paa-flag--warn' : 'paa-flag--ok'}`}>
-                      {photoAnalysis.hasScratchOrDent ? '⚠️' : '✓'} Çizik/Göçük
-                    </span>
-                    <span className={`paa-flag ${photoAnalysis.hasPaintDifference ? 'paa-flag--warn' : 'paa-flag--ok'}`}>
-                      {photoAnalysis.hasPaintDifference ? '⚠️' : '✓'} Boya Farkı
-                    </span>
-                    <span className={`paa-flag ${photoAnalysis.suspectedTaxiOrRental ? 'paa-flag--alert' : 'paa-flag--ok'}`}>
-                      {photoAnalysis.suspectedTaxiOrRental ? '🚨' : '✓'} Taksi/Kiralık
-                    </span>
-                    <span className={`paa-flag ${photoAnalysis.interiorDamage ? 'paa-flag--warn' : 'paa-flag--ok'}`}>
-                      {photoAnalysis.interiorDamage ? '⚠️' : '✓'} İç Mekan
-                    </span>
-                  </div>
-                  {photoAnalysis.findings.length > 0 && (
-                    <ul className="paa-list paa-list--findings">
-                      {photoAnalysis.findings.map((f, i) => <li key={i}>{f}</li>)}
-                    </ul>
-                  )}
-                  {photoAnalysis.warnings.length > 0 && (
-                    <ul className="paa-list paa-list--warnings">
-                      {photoAnalysis.warnings.map((w, i) => <li key={i}>⚠️ {w}</li>)}
-                    </ul>
-                  )}
-                  <p className="paa-summary">{photoAnalysis.summary}</p>
-                  <button className="paa-retry" type="button" onClick={runPhotoAnalysis}>Yeniden Analiz Et</button>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
         </div>

@@ -142,4 +142,18 @@ public sealed class ListingsController : ControllerBase
         var result = await _photoAnalysis.AnalyzeAsync(id, ct);
         return Ok(result);
     }
+
+    [HttpPost("extract-attributes-from-photos")]
+    [Authorize]
+    public async Task<ActionResult<Dictionary<string, string>>> ExtractAttributesFromPhotos(
+        [FromBody] ExtractAttributesFromPhotosRequest request, CancellationToken ct)
+    {
+        var result = await _photoAnalysis.ExtractAttributesFromPhotosAsync(
+            request.ImageUrls, request.CategorySlug, ct);
+        return Ok(result);
+    }
 }
+
+public sealed record ExtractAttributesFromPhotosRequest(
+    IReadOnlyList<string> ImageUrls,
+    string CategorySlug);

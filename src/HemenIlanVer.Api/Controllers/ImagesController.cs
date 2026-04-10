@@ -1,6 +1,7 @@
 using HemenIlanVer.Application.Abstractions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace HemenIlanVer.Api.Controllers;
 
@@ -16,8 +17,13 @@ public sealed class ImagesController : ControllerBase
     private const long MaxFileSizeBytes = 10 * 1024 * 1024; // 10 MB
 
     private readonly IStorageService _storage;
+    private readonly ILogger<ImagesController> _logger;
 
-    public ImagesController(IStorageService storage) => _storage = storage;
+    public ImagesController(IStorageService storage, ILogger<ImagesController> logger)
+    {
+        _storage = storage;
+        _logger = logger;
+    }
 
     [HttpPost("upload")]
     [Authorize]
@@ -33,9 +39,17 @@ public sealed class ImagesController : ControllerBase
         if (!AllowedContentTypes.Contains(file.ContentType))
             return BadRequest(new { error = "Sadece JPEG, PNG, WebP ve GIF formatları desteklenir." });
 
-        await using var stream = file.OpenReadStream();
-        var url = await _storage.UploadAsync(stream, file.FileName, file.ContentType, ct);
-
-        return Ok(new { url });
+        try
+        {
+            await using var stream = file.OpenReadStream();
+            var url = await _storage.UploadAsync(stream, file.FileName, file.ContentType, ct);
+            _logger.LogInformation("Upload başarılı: {Url}", url);
+            return Ok(new { url });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Upload hatası: {FileName} ({ContentType}, {Size} bytes)", file.FileName, file.ContentType, file.Length);
+            return StatusCode(500, new { error = $"Upload hatası: {ex.Message}" });
+        }
     }
 }

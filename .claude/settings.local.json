@@ -18,7 +18,20 @@
       "Bash(powershell -Command \"cd 'C:\\\\Users\\\\LENOVO\\\\Desktop\\\\HemenIlanVer'; dotnet build src/HemenIlanVer.Infrastructure/HemenIlanVer.Infrastructure.csproj --no-restore -v quiet 2>&1\")",
       "Bash(powershell -Command \"where.exe dotnet\")",
       "Bash(\"/c/Users/LENOVO/AppData/Roaming/Code/User/globalStorage/ms-dotnettools.vscode-dotnet-runtime/.dotnet/10.0.5~x64~aspnetcore/dotnet.exe\" build:*)",
-      "Bash(echo \"PID: $!\")"
+      "Bash(echo \"PID: $!\")",
+      "Bash(curl -I \"https://pub-853fcbf8b25042f5a6211e6192a96c4e.r2.dev/b9368577841044f88c8598ce7711f9fe.jpg\")",
+      "Bash(curl -k -I \"https://pub-853fcbf8b25042f5a6211e6192a96c4e.r2.dev/b9368577841044f88c8598ce7711f9fe.jpg\")",
+      "Bash(powershell -Command \"Invoke-WebRequest -Uri 'https://pub-853fcbf8b25042f5a6211e6192a96c4e.r2.dev/b9368577841044f88c8598ce7711f9fe.jpg' -Method Head -UseBasicParsing | Select-Object StatusCode,StatusDescription\")",
+      "WebSearch",
+      "WebFetch(domain:www.arabam.com)",
+      "WebFetch(domain:www.sahibinden.com)",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\LENOVO\\\\Desktop\\\\HemenIlanVer && dotnet build src/HemenIlanVer.Api/HemenIlanVer.Api.csproj -c Release --no-restore 2>&1\")",
+      "Bash(powershell.exe -Command \"cd 'C:\\\\Users\\\\LENOVO\\\\Desktop\\\\HemenIlanVer'; dotnet build src/HemenIlanVer.Api/HemenIlanVer.Api.csproj -c Release --no-restore 2>&1 | Select-Object -Last 10\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\Program Files\\\\dotnet\\\\dotnet.exe' build 'C:\\\\Users\\\\LENOVO\\\\Desktop\\\\HemenIlanVer\\\\src\\\\HemenIlanVer.Api\\\\HemenIlanVer.Api.csproj' -c Release --no-restore 2>&1 | Select-Object -Last 10\")",
+      "Bash(powershell.exe -Command \"Get-Command dotnet -ErrorAction SilentlyContinue | Select-Object Source\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Program Files\\\\dotnet' -ErrorAction SilentlyContinue | Select-Object Name\")",
+      "Bash(powershell.exe -Command \"Test-Path 'C:\\\\Program Files\\\\dotnet'\")",
+      "Bash(powershell.exe -Command \"docker compose -f 'C:\\\\Users\\\\LENOVO\\\\Desktop\\\\HemenIlanVer\\\\docker-compose.yml' build api 2>&1 | Select-Object -Last 5\")"
     ]
   }
 }

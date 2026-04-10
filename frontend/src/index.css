@@ -1314,6 +1314,30 @@ a {
   color: #e85d04;
 }
 
+.cl-photo-extract-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b46c1;
+  background: #faf5ff;
+  border: 1.5px solid #d6bcfa;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.cl-photo-extract-btn:hover:not(:disabled) {
+  background: #f3e8ff;
+  border-color: #9f7aea;
+}
+.cl-photo-extract-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .cl-img-preview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
@@ -3046,3 +3070,82 @@ code {
   transition: background 0.15s;
 }
 .paa-retry:hover { background: #f1f5f9; }
+
+.paa-mismatch-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: #fee2e2;
+  border: 2px solid #ef4444;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  animation: paa-pulse 1.5s ease-in-out infinite;
+}
+.paa-mismatch-icon { font-size: 1.8rem; flex-shrink: 0; }
+.paa-mismatch-alert strong {
+  display: block;
+  color: #991b1b;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.paa-mismatch-alert p {
+  margin: 0.2rem 0 0;
+  color: #b91c1c;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+@keyframes paa-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+}
+
+.paa-section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 0.25rem;
+}
+
+.paa-photo-q {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+  color: #475569;
+}
+.paa-pro-badge {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+}
+
+.paa-detected {
+  background: rgba(0,0,0,0.04);
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.paa-detected-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem 0.8rem;
+}
+.paa-det-item {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.78rem;
+}
+.paa-det-item span { color: #94a3b8; font-size: 0.72rem; }
+.paa-det-item b { color: #1e293b; font-weight: 600; }
+
+@media (max-width: 480px) {
+  .paa-detected-grid { grid-template-columns: repeat(2, 1fr); }
+}
