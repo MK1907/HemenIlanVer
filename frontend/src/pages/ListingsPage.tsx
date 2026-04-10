@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, resolveImageUrl } from '../api/client';
 
 type ListingSummary = {
   id: string;
@@ -175,7 +175,7 @@ export function ListingsPage() {
               <Link key={x.id} to={`/listings/${x.id}`} className="lp-card">
                 <div className="lp-card__thumb">
                   {x.primaryImageUrl
-                    ? <img src={x.primaryImageUrl} alt={x.title} loading="lazy" />
+                    ? <img src={resolveImageUrl(x.primaryImageUrl)} alt={x.title} loading="lazy" />
                     : <span className="lp-card__no-img">📷</span>
                   }
                   <span className="lp-card__cat">{x.categoryName}</span>

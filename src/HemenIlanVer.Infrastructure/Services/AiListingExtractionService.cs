@@ -187,6 +187,10 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "\"reasoning\":\"kısa düşünce\", \"rootSlug\":\"...\", " +
             "\"suggestedParentSlug\":\"...\"|null, " +
             "\"suggestedChildSlug\":\"...\"|null, \"confidence\":0.0-1.0, " +
+            "\"suggestedTitle\":\"Türkçe kısa başlık (maks 100 karakter)\", " +
+            "\"suggestedDescription\":\"2-3 cümle açıklama\", " +
+            "\"suggestedPrice\":null, " +
+            "\"extractedAttributes\":{\"attributeKey\":\"value\"}, " +
             "\"bootstrap\":{\"needed\":true/false, \"rootName\":\"...\", \"rootSlug\":\"...\", " +
             "\"parentName\":\"...\"|null, \"parentSlug\":\"...\"|null, " +
             "\"childName\":\"...\", \"childSlug\":\"...\", " +
@@ -199,8 +203,10 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "- Uygun yaprak kategori YOKSA → bootstrap.needed=true. 3 katman için parentName/parentSlug doldur, " +
             "  2 katman (yeni üst kategori de yeni) için parentName/parentSlug null bırak.\n" +
             "- TÜRKÇE isimler kullan, slug'lar küçük harf ve tire.\n" +
-            "- suggestedParentSlug: orta katman slug'ı (Otomobil için 'otomobil', Konut için 'konut' vb.).\n" +
-            "- suggestedChildSlug: yaprak katman slug'ı (SUV için 'suv', Daire için 'daire' vb.).\n\n" +
+            "- suggestedParentSlug: orta katman slug'ı — SADECE 3-katmanlı yapıda doldur.\n" +
+            "- suggestedChildSlug: HER ZAMAN doldur — bu yaprak kategorinin slug'ı. " +
+            "  2-katmanlı yapıda (Araç > Otomobil gibi) suggestedParentSlug=null, suggestedChildSlug='otomobil'.\n" +
+            "  3-katmanlı yapıda (Araç > Otomobil > Sedan gibi) suggestedParentSlug='otomobil', suggestedChildSlug='sedan'.\n\n" +
 
             "=== FİLTRE (ATTRIBUTE) KURALLARI ===\n" +
             "Yeni kategori oluştururken, o ürün/hizmet türünde endüstrideki GERÇEK İLAN SİTELERİNDE (sahibinden.com, letgo, hepsiburada, trendyol, n11, gittigidiyor, arabam.com, emlakjet, hepsiemlak) kullanılan TÜM ÖZELLİKLERİ filters dizisine ekle.\n" +
@@ -222,7 +228,12 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "Motosiklet (15+): marka(Enum:Honda/Yamaha/Kawasaki/Suzuki/BMW/Ducati/Harley-Davidson/Royal Enfield/KTM/Triumph), model(Enum,parent:marka), yil(Int), km(Int), motor(Enum:125cc/250cc/300cc/400cc/500cc/600cc/650cc/750cc/900cc/1000cc+), tip(Enum:Naked/Sport/Touring/Enduro/Cross/Scooter/Chopper/Cafe Racer), renk(Enum:Siyah/Beyaz/Kırmızı/Mavi/Turuncu/Yeşil/Gri/Sarı), vites(Enum:Manuel/Otomatik/Semi-Otomatik), durumu(Enum:Sıfır/İkinci El), hasarKaydi(Enum:Hasarsız/Hasarlı), ehliyet(Enum:A1/A2/A), kimden(Enum:Sahibinden/Bayiden), takasUygun(Bool), garanti(Bool)\n" +
             "Konut (20+): konutTipi(Enum:Daire/Müstakil/Villa/Residence/Yazlık/Çatı Katı/Dublex/Triplex), odaSayisi(Enum:1+0/1+1/2+1/3+1/4+1/5+1/6+), m2Brut(Int), m2Net(Int), binaYasi(Int), bulunduguKat(Enum:Giriş/1/2/3/4/5/6/7-10/11-15/16-20/Çatı), toplamKat(Int), isitmaTipi(Enum:Doğalgaz Kombi/Merkezi/Soba/Klima/Yerden Isıtma/Isı Pompası), banyoSayisi(Int), balkon(Bool), esyali(Bool), siteIcinde(Bool), otopark(Enum:Açık/Kapalı/Yok), cephe(Enum:Kuzey/Güney/Doğu/Batı/Güneydoğu/Güneybatı), yapininDurumu(Enum:Sıfır/İkinci El/Devam Eden Proje), tapuDurumu(Enum:Kat Mülkiyetli/Kat İrtifaklı/Hisseli/Müstakil/Kooperatif), aidat(Int), kimden(Enum:Sahibinden/Emlakçıdan/İnşaat Firmasından), krediyeUygun(Bool), takas(Bool)\n" +
             "Arsa (12+): arsaTipi(Enum:İmarlı/İmarsız/Tarla/Bağ & Bahçe/Sanayi/Ticari), m2(Int), ada(String), parsel(String), imar(Enum:Konut/Ticaret/Turizm/Sanayi/Tarım/Karma), taks(Decimal), kaks(Decimal), tapuDurumu(Enum:Hisseli/Müstakil/Arazi), altyapi(Enum:Var/Yok/Kısmen), yol(Enum:Asfalt/Stabilize/Toprak), konum(String), kimden(Enum:Sahibinden/Emlakçıdan), krediyeUygun(Bool), takas(Bool)\n" +
-            "İş Yeri (15+): isyeriTipi(Enum:Ofis/Dükkan/Depo/Fabrika/Atölye/Plaza/AVM/Restoran/Cafe/Otel), m2Brut(Int), m2Net(Int), binaYasi(Int), bulunduguKat(Enum:Bodrum/Giriş/1/2/3/4/5+), isitmaTipi(Enum:Doğalgaz Kombi/Merkezi/Klima/Soba/Yerden Isıtma), siteIcinde(Bool), esyali(Bool), vitrin(Bool), wc(Bool), depo(Bool), aidat(Int), tapuDurumu(Enum:Kat Mülkiyetli/Kat İrtifaklı/Hisseli/Müstakil), kimden(Enum:Sahibinden/Emlakçıdan), krediyeUygun(Bool)";
+            "İş Yeri (15+): isyeriTipi(Enum:Ofis/Dükkan/Depo/Fabrika/Atölye/Plaza/AVM/Restoran/Cafe/Otel), m2Brut(Int), m2Net(Int), binaYasi(Int), bulunduguKat(Enum:Bodrum/Giriş/1/2/3/4/5+), isitmaTipi(Enum:Doğalgaz Kombi/Merkezi/Klima/Soba/Yerden Isıtma), siteIcinde(Bool), esyali(Bool), vitrin(Bool), wc(Bool), depo(Bool), aidat(Int), tapuDurumu(Enum:Kat Mülkiyetli/Kat İrtifaklı/Hisseli/Müstakil), kimden(Enum:Sahibinden/Emlakçıdan), krediyeUygun(Bool)\n\n" +
+
+            "=== ÖZELLİK ÇIKARMA (AYNI ÇAĞRIDA) ===\n" +
+            "Tespit ettiğin kategorinin filtreleri (yukarıdaki listeden) için, kullanıcı metninden değerleri çıkar.\n" +
+            "Emin olmadığın veya metinde geçmeyen alanları EKLEME. Sadece gerçek, bilinen sektör değerleri kullan.\n" +
+            "suggestedTitle: Türkçe, kısa ve çekici (maks 100 karakter). suggestedDescription: 2-3 cümle. suggestedPrice: TRY tahmini, bilinmiyorsa null.";
 
         var body = new
         {
@@ -370,58 +381,83 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
                 }
             }
 
-            // 2-katman fallback: root'un direkt çocuğu
+            // 2-katman fallback: root'un direkt çocuğu (childSlug slug'ına göre)
             if (leafId is null)
             {
                 var match = children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == childSlugNorm)
                     ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlugRaw))
                     ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == CategorySlugHelper.NormalizeToAscii(childSlugRaw));
                 if (match is not null) leafId = match.Id;
-                else leafId = children.FirstOrDefault(c => c.ParentId == rootCat.Id)?.Id;
             }
         }
 
-        string? sugTitle = null;
-        string? sugDesc = null;
+        // childSlug bulunamadıysa parentSlug'ı leaf olarak kullan (AI otomobil gibi 2. katman kategorileri
+        // suggestedParentSlug olarak döndürüyor, suggestedChildSlug vermeyebilir)
+        if (leafId is null && !string.IsNullOrEmpty(parentSlugNorm))
+        {
+            var midCat = midCats.FirstOrDefault(m => m.Slug == parentSlugNorm)
+                ?? midCats.FirstOrDefault(m => CategorySlugHelper.SlugEquals(m.Slug, parentSlugRaw!));
+            if (midCat is not null) leafId = midCat.Id;
+        }
+
+        // Son çare: rootSlug slug eşleşmesiyle bulunabilirse veya childSlug root'un çocuklarına denk geliyorsa
+        if (leafId is null && !string.IsNullOrEmpty(childSlugRaw))
+        {
+            leafId = children.FirstOrDefault(c => c.ParentId == rootCat.Id)?.Id;
+        }
+
+        // Kategori tespiti ile aynı çağrıdan özellik değerlerini çıkar (ikinci AI çağrısına gerek yok)
+        var sugTitle = doc.TryGetProperty("suggestedTitle", out var stProp) && stProp.ValueKind == JsonValueKind.String ? stProp.GetString() : null;
+        var sugDesc = doc.TryGetProperty("suggestedDescription", out var sdProp) && sdProp.ValueKind == JsonValueKind.String ? sdProp.GetString() : null;
         decimal? sugPrice = null;
+        if (doc.TryGetProperty("suggestedPrice", out var spProp) && spProp.ValueKind == JsonValueKind.Number && spProp.TryGetDecimal(out var spVal))
+            sugPrice = spVal;
+
         IReadOnlyDictionary<string, string>? sugAttrs = null;
+        if (doc.TryGetProperty("extractedAttributes", out var eaProp) && eaProp.ValueKind == JsonValueKind.Object)
+        {
+            var rawValues = new Dictionary<string, string>();
+            foreach (var prop in eaProp.EnumerateObject())
+            {
+                var val = prop.Value.ValueKind switch
+                {
+                    JsonValueKind.String => prop.Value.GetString(),
+                    JsonValueKind.Number => prop.Value.GetRawText(),
+                    JsonValueKind.True => "true",
+                    JsonValueKind.False => "false",
+                    _ => null
+                };
+                if (val is not null) rawValues[prop.Name] = val;
+            }
+            if (rawValues.Count > 0) sugAttrs = rawValues;
+        }
 
         if (leafId is not null)
         {
-            try
+            // Kategoriyi AI çıktısıyla kuyruğa ekle — worker önce tespit edilen değerleri işler
+            _enrichmentQueue.Enqueue(new Application.Abstractions.CategoryEnrichmentJob(
+                leafId.Value,
+                sugAttrs));
+
+            // Arka planda kaydet — kullanıcıyı beklettirmez
+            if (sugAttrs is { Count: > 0 })
             {
-                (sugTitle, sugDesc, sugPrice, sugAttrs) =
-                    await ExtractAttributeValuesAsync(client, prompt, leafId.Value, ct);
-
-                // Kategoriyi AI çıktısıyla kuyruğa ekle — worker önce tespit edilen değerleri işler
-                _enrichmentQueue.Enqueue(new Application.Abstractions.CategoryEnrichmentJob(
-                    leafId.Value,
-                    sugAttrs));
-
-                // Arka planda kaydet — kullanıcıyı beklettirmez
-                if (sugAttrs is { Count: > 0 })
+                var capturedLeafId = leafId.Value;
+                var capturedAttrs = sugAttrs;
+                _ = Task.Run(async () =>
                 {
-                    var capturedLeafId = leafId.Value;
-                    var capturedAttrs = sugAttrs;
-                    _ = Task.Run(async () =>
+                    try
                     {
-                        try
-                        {
-                            await using var scope = _scopeFactory.CreateAsyncScope();
-                            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                            var svc = new AiOptionPersister(db, _logger);
-                            await svc.PersistAsync(capturedLeafId, capturedAttrs, CancellationToken.None);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "Arka plan option kaydetme başarısız.");
-                        }
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "AI attribute değer çıkarma başarısız; kategori tespiti yine döner.");
+                        await using var scope = _scopeFactory.CreateAsyncScope();
+                        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                        var svc = new AiOptionPersister(db, _logger);
+                        await svc.PersistAsync(capturedLeafId, capturedAttrs, CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Arka plan option kaydetme başarısız.");
+                    }
+                });
             }
         }
 
@@ -437,111 +473,6 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             sugDesc,
             sugPrice,
             sugAttrs);
-    }
-
-    private async Task<(string? Title, string? Description, decimal? Price, IReadOnlyDictionary<string, string>? AttrValues)>
-        ExtractAttributeValuesAsync(HttpClient client, string? prompt, Guid leafCategoryId, CancellationToken ct)
-    {
-        var attrs = await _db.CategoryAttributes.AsNoTracking()
-            .Include(x => x.Options)
-            .Where(x => x.CategoryId == leafCategoryId)
-            .OrderBy(x => x.SortOrder)
-            .ToListAsync(ct);
-
-        if (attrs.Count == 0)
-            return (null, null, null, null);
-
-        // Kod seviyesinde Enum doğrulama için options map
-        var attrOptionMap = attrs
-            .Where(a => a.DataType == AttributeDataType.Enum || a.Options.Count > 0)
-            .ToDictionary(
-                a => a.AttributeKey,
-                a => a.Options.Select(o => o.ValueKey).ToHashSet(StringComparer.OrdinalIgnoreCase)
-            );
-
-        var attrSpec = attrs.Select(a => new
-        {
-            key = a.AttributeKey,
-            displayName = a.DisplayName,
-            dataType = a.DataType.ToString(),
-            required = a.IsRequired,
-            options = a.Options.OrderBy(o => o.SortOrder).Select(o => new { o.ValueKey, o.Label }).ToList()
-        }).ToList();
-
-        // Tek AI çağrısında çıkar + doğrula (options listesi kılavuz, zorunlu değil)
-        var system =
-            "Sen Türkiye ilan sitelerinde ilan metni ayrıştırıcı ve veri kalite uzmanısın. Yanıtını JSON formatında ver.\n\n" +
-            "ALANLAR: " + JsonSerializer.Serialize(attrSpec) + "\n\n" +
-            "KURALLAR:\n" +
-            "1. Enum alanlar (options listesi varsa) → önce listeden valueKey ile seç. " +
-               "Listede yoksa ama gerçek ve bilinen bir sektör değeriyse yine de ekle.\n" +
-            "2. Üretici/marka alanı için: metinde geçen ifade gerçek bir üretici firma değilse (paket adı, slogan, donanım kodu vb.) O ALANI EKLEME.\n" +
-            "3. String: serbest metin. Int/Decimal/Money: sadece sayı. Bool: true/false.\n" +
-            "4. Metinden çıkaramadığın veya emin olmadığın alanları EKLEME.\n\n" +
-            "JSON ÇIKTI FORMATI: {\"suggestedTitle\":\"...\",\"suggestedDescription\":\"...\",\"suggestedPrice\":null,\"attributes\":{\"key\":\"value\",...}}\n" +
-            "- suggestedTitle: Türkçe, kısa ve çekici (maks 100 karakter)\n" +
-            "- suggestedDescription: 2-3 cümle\n" +
-            "- suggestedPrice: TRY tahmini, bilinmiyorsa null\n" +
-            "- attributes: SADECE gerçek, bilinen sektör değerleri — kategori ne olursa olsun geçerli kural";
-
-        var body = new
-        {
-            model = _openAi.Model,
-            response_format = new { type = "json_object" },
-            messages = new object[]
-            {
-                new { role = "system", content = system },
-                new { role = "user", content = prompt ?? "" }
-            }
-        };
-
-        using var resp = await client.PostAsJsonAsync("chat/completions", body, ct);
-        var raw = await resp.Content.ReadAsStringAsync(ct);
-        OpenAiErrorMapper.EnsureSuccess(resp, raw);
-
-        var root = JsonDocument.Parse(raw).RootElement;
-        var content = root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "{}";
-        var doc = JsonDocument.Parse(content).RootElement;
-
-        var title = doc.TryGetProperty("suggestedTitle", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
-        var desc = doc.TryGetProperty("suggestedDescription", out var sd) && sd.ValueKind == JsonValueKind.String ? sd.GetString() : null;
-        decimal? price = null;
-        if (doc.TryGetProperty("suggestedPrice", out var sp))
-        {
-            if (sp.ValueKind == JsonValueKind.Number && sp.TryGetDecimal(out var d)) price = d;
-        }
-
-        var rawValues = new Dictionary<string, string>();
-        if (doc.TryGetProperty("attributes", out var attrObj) && attrObj.ValueKind == JsonValueKind.Object)
-        {
-            foreach (var prop in attrObj.EnumerateObject())
-            {
-                var val = prop.Value.ValueKind switch
-                {
-                    JsonValueKind.String => prop.Value.GetString(),
-                    JsonValueKind.Number => prop.Value.GetRawText(),
-                    JsonValueKind.True => "true",
-                    JsonValueKind.False => "false",
-                    _ => null
-                };
-                if (val is null) continue;
-
-                // Enum alanı: listede yoksa AI'ya güven (prompt zaten sahte değerleri filtreler),
-                // değeri kabul et — arka planda DB'ye kaydedilecek.
-                if (attrOptionMap.TryGetValue(prop.Name, out var validOptions)
-                    && validOptions.Count > 0
-                    && !validOptions.Contains(val))
-                {
-                    _logger.LogInformation(
-                        "Enum '{Key}'='{Val}' options listesinde yok; AI'ya güvenilerek kabul edildi.",
-                        prop.Name, val);
-                }
-
-                rawValues[prop.Name] = val;
-            }
-        }
-
-        return (title, desc, price, rawValues.Count > 0 ? rawValues : null);
     }
 
 }

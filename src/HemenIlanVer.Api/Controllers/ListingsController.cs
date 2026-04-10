@@ -15,17 +15,23 @@ public sealed class ListingsController : ControllerBase
     private readonly IRagSearchService _rag;
     private readonly IListingIndexService _indexer;
     private readonly IAiSearchExtractionService _searchExtractor;
+    private readonly IAiSalePredictionService _salePrediction;
+    private readonly IAiPhotoAnalysisService _photoAnalysis;
 
     public ListingsController(
         IListingService listings,
         IRagSearchService rag,
         IListingIndexService indexer,
-        IAiSearchExtractionService searchExtractor)
+        IAiSearchExtractionService searchExtractor,
+        IAiSalePredictionService salePrediction,
+        IAiPhotoAnalysisService photoAnalysis)
     {
         _listings = listings;
         _rag = rag;
         _indexer = indexer;
         _searchExtractor = searchExtractor;
+        _salePrediction = salePrediction;
+        _photoAnalysis = photoAnalysis;
     }
 
     [HttpGet]
@@ -112,5 +118,28 @@ public sealed class ListingsController : ControllerBase
     {
         var added = await _listings.ToggleFavoriteAsync(User.GetUserId(), id, ct);
         return Ok(new { favorited = added });
+    }
+
+    [HttpGet("{id:guid}/sale-prediction")]
+    [Authorize]
+    public async Task<ActionResult<SalePredictionDto>> SalePrediction(Guid id, CancellationToken ct)
+    {
+        // Sadece ilanın sahibi görebilir
+        var listing = await _listings.GetByIdAsync(id, ct);
+        if (listing is null) return NotFound();
+        if (listing.UserId != User.GetUserId()) return Forbid();
+
+        var prediction = await _salePrediction.PredictAsync(id, ct);
+        return Ok(prediction);
+    }
+
+    [HttpGet("{id:guid}/photo-analysis")]
+    [Authorize]
+    public async Task<ActionResult<PhotoAnalysisDto>> PhotoAnalysis(Guid id, CancellationToken ct)
+    {
+        var listing = await _listings.GetByIdAsync(id, ct);
+        if (listing is null) return NotFound();
+        var result = await _photoAnalysis.AnalyzeAsync(id, ct);
+        return Ok(result);
     }
 }

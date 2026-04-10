@@ -44,6 +44,15 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
+// Local storage için /uploads/* dosyalarını serve et
+var uploadsPath = Path.Combine(AppContext.BaseDirectory, "uploads");
+Directory.CreateDirectory(uploadsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
+    RequestPath = "/uploads"
+});
+
 using (var scope = app.Services.CreateScope())
 {
     await DbSeeder.SeedAsync(scope.ServiceProvider);

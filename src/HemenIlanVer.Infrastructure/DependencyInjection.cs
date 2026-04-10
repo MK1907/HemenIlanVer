@@ -51,7 +51,14 @@ public static class DependencyInjection
         services.AddScoped<IEmbeddingService, EmbeddingService>();
         services.AddScoped<IListingIndexService, ListingIndexService>();
         services.AddScoped<IRagSearchService, RagSearchService>();
-        services.AddSingleton<IStorageService, CloudflareR2StorageService>();
+        services.AddScoped<IAiSalePredictionService, AiSalePredictionService>();
+        services.AddScoped<IAiPhotoAnalysisService, AiPhotoAnalysisService>();
+        // R2 credentials varsa Cloudflare, yoksa local disk
+        var r2Opts = configuration.GetSection(CloudflareR2Options.SectionName).Get<CloudflareR2Options>();
+        if (!string.IsNullOrWhiteSpace(r2Opts?.AccessKeyId) && !string.IsNullOrWhiteSpace(r2Opts?.SecretAccessKey))
+            services.AddSingleton<IStorageService, CloudflareR2StorageService>();
+        else
+            services.AddSingleton<IStorageService, LocalStorageService>();
 
         // Kategori zenginleştirme kuyruğu + arka plan işçisi
         services.AddSingleton<ICategoryEnrichmentQueue, CategoryEnrichmentQueue>();

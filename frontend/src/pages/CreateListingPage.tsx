@@ -34,6 +34,7 @@ export function CreateListingPage() {
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({}); // uploadedUrl -> blobUrl
   const [primaryImageUrl, setPrimaryImageUrl] = useState<string | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -124,15 +125,19 @@ export function CreateListingPage() {
     setImageError(null);
     setImageUploading(true);
     try {
+      const newPreviews: Record<string, string> = {};
       const uploaded: string[] = [];
       for (const file of files) {
+        const blobUrl = URL.createObjectURL(file);
         const form = new FormData();
         form.append('file', file);
         const { data } = await api.post<{ url: string }>('/api/images/upload', form, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
+        newPreviews[data.url] = blobUrl;
         uploaded.push(data.url);
       }
+      setPreviewUrls((prev) => ({ ...prev, ...newPreviews }));
       setImageUrls((prev) => {
         const next = [...prev, ...uploaded];
         if (!primaryImageUrl && next.length > 0) setPrimaryImageUrl(next[0]);
@@ -147,6 +152,10 @@ export function CreateListingPage() {
   }
 
   function removeImage(url: string) {
+    // blob URL'i temizle (bellek sızıntısı önleme)
+    const blob = previewUrls[url];
+    if (blob) URL.revokeObjectURL(blob);
+    setPreviewUrls((prev) => { const next = { ...prev }; delete next[url]; return next; });
     setImageUrls((prev) => {
       const next = prev.filter((u) => u !== url);
       if (primaryImageUrl === url) setPrimaryImageUrl(next[0] ?? null);
@@ -503,7 +512,7 @@ export function CreateListingPage() {
                           const isPrimary = url === primaryImageUrl;
                           return (
                             <div key={url} className={`cl-img-preview-item${isPrimary ? ' cl-img-preview-item--primary' : ''}`}>
-                              <img src={url} alt={`Fotoğraf ${i + 1}`} />
+                              <img src={previewUrls[url] ?? url} alt={`Fotoğraf ${i + 1}`} />
                               {isPrimary
                                 ? <span className="cl-img-primary-badge">⭐ Vitrin</span>
                                 : (

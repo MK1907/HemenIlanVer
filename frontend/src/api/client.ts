@@ -1,9 +1,15 @@
 import axios from 'axios';
 
-const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+export const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080';
+
+/** Relative URL (/uploads/...) ise olduğu gibi bırak (nginx proxy karşılar), tam URL ise olduğu gibi bırak */
+export function resolveImageUrl(url: string): string {
+  if (!url) return url;
+  return url; // nginx /uploads/ → api:8080/uploads/ proxy'si halleder
+}
 
 export const api = axios.create({
-  baseURL,
+  baseURL: baseURL,
   headers: { 'Content-Type': 'application/json' },
 });
 
