@@ -2,7 +2,6 @@ using System.Text;
 using HemenIlanVer.Application.Abstractions;
 using HemenIlanVer.Infrastructure.Identity;
 using HemenIlanVer.Infrastructure.Options;
-using HemenIlanVer.Infrastructure.Services;
 using HemenIlanVer.Infrastructure.Persistence;
 using HemenIlanVer.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;

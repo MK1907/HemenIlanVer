@@ -99,58 +99,108 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             .Select(x => new { x.Id, x.ParentId, x.Name, x.Slug })
             .ToListAsync(ct);
 
-        var rootList = roots.Select(r => new { r.Name, r.Slug }).ToList();
+        // Tüm düzeyler (root → mid → leaf) için 3-katman ağacı
+        var rootList = roots.Select(r =>
+        {
+            var mids = children.Where(c => c.ParentId == r.Id).ToList();
+            return new
+            {
+                r.Name,
+                r.Slug,
+                children = mids.Select(m => new
+                {
+                    m.Name,
+                    m.Slug,
+                    children = children
+                        .Where(leaf => leaf.ParentId == m.Id)
+                        .Select(leaf => new { leaf.Name, leaf.Slug })
+                        .ToList()
+                }).ToList()
+            };
+        }).ToList();
+
+        // Düz liste: leaf kategoriler (alt kategorisi olmayan her kategori)
+        var leafCategories = children
+            .Where(c => !children.Any(x => x.ParentId == c.Id))
+            .Select(c =>
+            {
+                var parent = children.FirstOrDefault(p => p.Id == c.ParentId);
+                var grandparent = parent is not null ? roots.FirstOrDefault(r => r.Id == parent.ParentId) : null;
+                var rootCatForLeaf = grandparent ?? roots.FirstOrDefault(r => r.Id == c.ParentId);
+                return new
+                {
+                    c.Name,
+                    c.Slug,
+                    parentName = parent?.Name,
+                    parentSlug = parent?.Slug,
+                    rootSlug = (grandparent ?? rootCatForLeaf)?.Slug
+                };
+            }).ToList();
+
+        // Orta katman (sadece alt kategorisi olanlar - bunlar seçilemez)
         var childList = children.Select(c => new
         {
             c.Name,
             c.Slug,
             c.ParentId,
-            parentSlug = roots.FirstOrDefault(r => r.Id == c.ParentId)?.Slug
+            parentSlug = roots.FirstOrDefault(r => r.Id == c.ParentId)?.Slug,
+            hasChildren = children.Any(x => x.ParentId == c.Id)
         }).ToList();
 
         var system =
-            "Sen Türkiye'deki sahibinden.com / letgo benzeri ilan sitelerinde ÜRÜN KATEGORİSİ TESPİTİ yapan bir uzmansın.\n\n" +
+            "Sen Türkiye ilan sitesinde ARAÇ ve EMLAK ilanı kabul eden bir platform için kategori tespiti yapıyorsun.\n\n" +
+
+            "=== ÖNEMLİ KISITLAMA ===\n" +
+            "Bu platform YALNIZCA iki kategoriyi kabul eder:\n" +
+            "  1. ARAÇ: otomobil, motosiklet, minivan, ticari araç, karavan, deniz aracı, ATV, arazi aracı, elektrikli araç, SUV, pick-up, klasik araç vb.\n" +
+            "  2. EMLAK: konut (daire, villa, müstakil ev, köy evi), iş yeri, arsa, konut projesi, bina, devre mülk, turistik tesis vb.\n\n" +
+            "Araç veya Emlak DIŞINDA bir ürün/hizmet ise → isValidListing: false, invalidReason: 'Bu platform şu an yalnızca araç ve emlak ilanlarını kabul etmektedir.'\n\n" +
 
             "=== ADIM ADIM DÜŞÜN ===\n" +
-            "0. ÖNCE metnin gerçek bir ilan olup olmadığını değerlendir:\n" +
-            "   - Anlamsız/rastgele karakterler (örn: 'asdfgh', 'xyzxyz', '123abc', 'aaaaaa') → isValidListing: false\n" +
-            "   - İlan dışı içerik (küfür, kişisel mesaj, test metni, sadece sayı/sembol) → isValidListing: false\n" +
-            "   - Gerçek bir ürün/hizmet/mülk tanımıyorsa → isValidListing: false\n" +
-            "   - Gerçek bir ilan olabilecek metinse → isValidListing: true\n" +
-            "1. Önce kullanıcının metninde geçen ÜRÜNü / HİZMETi belirle.\n" +
-            "2. Bu ürün hangi sektöre/kategoriye aittir? (örn: çanta, ayakkabı, giysi → Giyim & Aksesuar; telefon, laptop → Elektronik; araba → Araç; ev, daire → Emlak)\n" +
-            "3. Mevcut kategorilerden en uygun olanı seç. Yoksa bootstrap ile yeni kategori oluştur.\n\n" +
-
-            "=== KRİTİK KURALLAR ===\n" +
-            "- Marka adları (Prada, Gucci, Nike, Adidas, Louis Vuitton, Chanel vb.) ürünün KATEGORİSİNİ DEĞİŞTİRMEZ. Marka = attribute, kategori değil.\n" +
-            "- Bir çanta elektronik DEĞİLDİR. Bir ayakkabı araç DEĞİLDİR. ÜRÜNÜN FİZİKSEL DOĞASINA bak.\n" +
-            "- \"Orijinal\", \"replika\", \"toptan\" gibi kelimeler kategoriyi değiştirmez, ürünün kendisine odaklan.\n\n" +
+            "0. Metin geçerli bir ilan mı?\n" +
+            "   - Anlamsız/rastgele karakterler → isValidListing: false\n" +
+            "   - İlan dışı içerik (küfür, mesaj, test) → isValidListing: false\n" +
+            "   - Araç veya Emlak dışı kategori (telefon, giysi, elektronik, eğitim vb.) → isValidListing: false\n" +
+            "   - Araç veya Emlak ilanıysa → isValidListing: true\n" +
+            "1. Araç mı Emlak mı? Alt kategorisini belirle.\n" +
+            "2. Mevcut kategorilerden en uygununu seç. Yoksa bootstrap ile oluştur.\n\n" +
 
             "=== ÖRNEK EŞLEŞTIRMELER ===\n" +
-            "- \"Çanta Orijinal Prada Marka\" → Giyim & Aksesuar > Çanta (marka: Prada)\n" +
-            "- \"2012 model Fiat Egea\" → Araç > Otomobil (marka: Fiat, model: Egea, yıl: 2012)\n" +
-            "- \"iPhone 15 Pro 256GB\" → Elektronik > Cep Telefonu (marka: Apple, model: iPhone 15 Pro)\n" +
-            "- \"3+1 daire Kadıköy\" → Emlak > Konut\n" +
-            "- \"LGS Matematik özel ders\" → Eğitim > Özel Ders\n" +
-            "- \"Nike Air Force beyaz spor ayakkabı\" → Giyim & Aksesuar > Ayakkabı\n" +
-            "- \"Toptan havlu seti\" → Giyim & Aksesuar > Tekstil veya Ev & Yaşam > Ev Tekstili\n\n" +
+            "- \"2020 BMW X5\" → Araç > Arazi, SUV & Pickup\n" +
+            "- \"2018 Fiat Egea Sedan\" → Araç > Otomobil\n" +
+            "- \"Ford Transit ticari\" → Araç > Ticari Araçlar\n" +
+            "- \"Honda CB500 motosiklet\" → Araç > Motosiklet\n" +
+            "- \"Karavan satılık\" → Araç > Karavan\n" +
+            "- \"3+1 daire Kadıköy kiralık\" → Emlak > Konut\n" +
+            "- \"Çeşme'de villa satılık\" → Emlak > Konut\n" +
+            "- \"500 m² arsa\" → Emlak > Arsa\n" +
+            "- \"Ofis kiralık Levent\" → Emlak > İş Yeri\n" +
+            "- \"iPhone satılık\" → isValidListing: false (araç/emlak değil)\n" +
+            "- \"Nike ayakkabı\" → isValidListing: false (araç/emlak değil)\n\n" +
 
-            "=== MEVCUT KATEGORİLER ===\n" +
-            "Ana kategoriler (name → slug): " + JsonSerializer.Serialize(rootList) + "\n" +
-            "Alt kategoriler (name → slug, parentSlug): " + JsonSerializer.Serialize(childList) + "\n\n" +
+            "=== MEVCUT KATEGORİLER (3 KATMANLI AĞAÇ) ===\n" +
+            JsonSerializer.Serialize(rootList) + "\n\n" +
+            "SEÇİLEBİLİR YAPRAK KATEGORİLER (alt kategorisi olmayan): " + JsonSerializer.Serialize(leafCategories) + "\n\n" +
 
             "=== ÇIKTI FORMATI (SADECE JSON) ===\n" +
             "{\"isValidListing\":true/false, \"invalidReason\":\"geçersizse kısa Türkçe açıklama (geçerliyse null)\", " +
-            "\"reasoning\":\"kısa düşünce (ürün nedir, hangi kategoriye ait)\", \"rootSlug\":\"...\", \"suggestedChildSlug\":\"...\"|null, \"confidence\":0.0-1.0, " +
-            "\"bootstrap\":{\"needed\":true/false, \"rootName\":\"...\", \"rootSlug\":\"...\", \"childName\":\"...\", \"childSlug\":\"...\", " +
+            "\"reasoning\":\"kısa düşünce\", \"rootSlug\":\"...\", " +
+            "\"suggestedParentSlug\":\"...\"|null, " +
+            "\"suggestedChildSlug\":\"...\"|null, \"confidence\":0.0-1.0, " +
+            "\"bootstrap\":{\"needed\":true/false, \"rootName\":\"...\", \"rootSlug\":\"...\", " +
+            "\"parentName\":\"...\"|null, \"parentSlug\":\"...\"|null, " +
+            "\"childName\":\"...\", \"childSlug\":\"...\", " +
             "\"filters\":[{\"key\":\"...\", \"displayName\":\"...\", \"dataType\":\"String|Int|Decimal|Bool|Enum|Money\", \"required\":true/false, " +
             "\"parentKey\":null|\"başka bir filtre key'i (bağımlılık varsa)\", " +
             "\"options\":[{\"valueKey\":\"...\",\"label\":\"...\",\"parentValue\":null|\"parent option valueKey\"}]}]}}\n\n" +
 
             "=== BOOTSTRAP KURALLARI ===\n" +
-            "- Mevcut slug'lardan biri uygunsa → bootstrap.needed=false, o slug'ı seç.\n" +
-            "- Uygun kategori YOKSA → bootstrap.needed=true, doğru isim ve slug ile yeni oluştur.\n" +
-            "- TÜRKÇE isimler kullan, slug'lar küçük harf ve tire.\n\n" +
+            "- Mevcut YAPRAK kategori uygunsa → bootstrap.needed=false, rootSlug + suggestedParentSlug + suggestedChildSlug seç.\n" +
+            "- Uygun yaprak kategori YOKSA → bootstrap.needed=true. 3 katman için parentName/parentSlug doldur, " +
+            "  2 katman (yeni üst kategori de yeni) için parentName/parentSlug null bırak.\n" +
+            "- TÜRKÇE isimler kullan, slug'lar küçük harf ve tire.\n" +
+            "- suggestedParentSlug: orta katman slug'ı (Otomobil için 'otomobil', Konut için 'konut' vb.).\n" +
+            "- suggestedChildSlug: yaprak katman slug'ı (SUV için 'suv', Daire için 'daire' vb.).\n\n" +
 
             "=== FİLTRE (ATTRIBUTE) KURALLARI ===\n" +
             "Yeni kategori oluştururken, o ürün/hizmet türünde endüstrideki GERÇEK İLAN SİTELERİNDE (sahibinden.com, letgo, hepsiburada, trendyol, n11, gittigidiyor, arabam.com, emlakjet, hepsiemlak) kullanılan TÜM ÖZELLİKLERİ filters dizisine ekle.\n" +
@@ -168,14 +218,11 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             "Bağımlılık yoksa parentKey ve parentValue null/yok olsun.\n\n" +
 
             "=== KATEGORİ BAZLI TAM FİLTRE LİSTESİ (minimum — bunlardan AZ OLMA, daha fazla ekle) ===\n" +
-            "Otomobil (20+): marka(Enum), model(Enum,parent:marka), seri(Enum,parent:model), yıl(Int), km(Int), vitesTipi(Enum:Manuel/Otomatik/Yarı Otomatik/Triptonik), yakitTipi(Enum:Benzin/Dizel/LPG/Hybrid/Elektrik/Benzin & LPG), kasaTipi(Enum:Sedan/Hatchback/SUV/Station Wagon/Coupe/Cabrio/Minivan/Pick-up), motorHacmi(Enum:1.0/1.2/1.4/1.6/1.8/2.0/2.5/3.0+), beygirGucu(Int), renk(Enum:Beyaz/Siyah/Gri/Kırmızı/Mavi/Lacivert/Gümüş/Füme/Kahverengi/Yeşil/Sarı/Turuncu), cekisTipi(Enum:Önden/Arkadan/4x4/AWD), plakaUyrugu(Enum:TR/Yabancı), hasarKaydi(Enum:Hasarsız/Hafif Hasarlı/Ağır Hasarlı/Boyalı/Değişenli), tramerdegeri(Int), garanti(Bool), takasUygun(Bool), kimden(Enum:Sahibinden/Galeriden), durumu(Enum:Sıfır/İkinci El)\n" +
-            "Konut (20+): ilanTipi(Enum:Satılık/Kiralık), konutTipi(Enum:Daire/Müstakil/Villa/Residence/Yazlık/Çatı Katı/Dublex/Triplex), odaSayisi(Enum:1+0/1+1/2+1/3+1/4+1/5+1/6+), m2Brut(Int), m2Net(Int), binaYasi(Int), bulunduguKat(Enum:Giriş/1/2/3/4/5/6/7-10/11-15/16-20/Çatı), toplamKat(Int), isitmaTipi(Enum:Doğalgaz Kombi/Merkezi/Soba/Klima/Yerden Isıtma/Isı Pompası), banyoSayisi(Int), balkon(Bool), esyali(Bool), siteIcinde(Bool), otopark(Enum:Açık/Kapalı/Yok), cephe(Enum:Kuzey/Güney/Doğu/Batı/Güneydoğu/Güneybatı), yapininDurumu(Enum:Sıfır/İkinci El/Devam Eden Proje), tapuDurumu(Enum:Kat Mülkiyetli/Kat İrtifaklı/Hisseli/Müstakil/Kooperatif), aidat(Int), kimden(Enum:Sahibinden/Emlakçıdan/İnşaat Firmasından), krediyeUygun(Bool), takas(Bool)\n" +
-            "Cep Telefonu (18+): marka(Enum:Apple/Samsung/Xiaomi/Huawei/Oppo/Vivo/Realme/OnePlus/Google/Nothing), model(Enum,parent:marka), dahiliHafiza(Enum:32GB/64GB/128GB/256GB/512GB/1TB), ram(Enum:2GB/3GB/4GB/6GB/8GB/12GB/16GB), ekranBoyutu(Enum:5.0/5.5/6.0/6.1/6.4/6.5/6.7/6.8/6.9), renk(Enum:Siyah/Beyaz/Mavi/Kırmızı/Yeşil/Mor/Sarı/Gri/Altın/Gümüş), bataryaKapasitesi(Int), isletimSistemi(Enum:iOS/Android/HarmonyOS), kameraMegapiksel(Int), garanti(Bool), durumu(Enum:Sıfır/İkinci El/Yenilenmiş), kutusuVarMi(Bool), faturaliMi(Bool), agDesteği(Enum:4G/5G), ciftHat(Bool), ekranTipi(Enum:AMOLED/OLED/LCD/IPS), kimden(Enum:Sahibinden/Mağazadan), takas(Bool)\n" +
-            "Çanta & Aksesuar (16+): marka(Enum:Louis Vuitton/Gucci/Prada/Chanel/Hermès/Michael Kors/Coach/Zara/Mango/Vakko/Beymen), tip(Enum:El Çantası/Omuz Çantası/Sırt Çantası/Clutch/Bel Çantası/Evrak Çantası/Valiz/Cüzdan), malzeme(Enum:Deri/Sentetik Deri/Kumaş/Kanvas/Naylon/Süet), renk(Enum:Siyah/Beyaz/Kahverengi/Taba/Kırmızı/Lacivert/Bej/Pembe/Gri/Yeşil), boyut(Enum:Mini/Küçük/Orta/Büyük/Ekstra Büyük), cinsiyet(Enum:Kadın/Erkek/Unisex), durum(Enum:Sıfır/Az Kullanılmış/Kullanılmış), orijinallik(Enum:Orijinal/A Kalite/Replika), kutuSertifika(Bool), seriNumarasi(Bool), garantiDurumu(Bool), uretimYili(Int), koleksiyonSeri(String), kimden(Enum:Sahibinden/Mağazadan/Komisyoncudan), takas(Bool), fiyatPazarlik(Bool)\n" +
-            "Ayakkabı (16+): marka(Enum:Nike/Adidas/Puma/New Balance/Converse/Vans/Skechers/Reebok/Asics/Salomon/Timberland), model(Enum,parent:marka), numara(Enum:36/37/38/39/40/41/42/43/44/45/46), renk(Enum:Siyah/Beyaz/Kırmızı/Mavi/Gri/Kahverengi/Yeşil/Turuncu/Pembe/Çok Renkli), cinsiyet(Enum:Kadın/Erkek/Unisex/Çocuk), tip(Enum:Spor/Günlük/Klasik/Bot/Çizme/Sandalet/Terlik/Koşu/Outdoor/Krampon), malzeme(Enum:Deri/Sentetik/Kanvas/Tekstil/Süet), taban(Enum:Kauçuk/EVA/Köpük/Deri), durum(Enum:Sıfır/Az Kullanılmış/Kullanılmış), kutuVarMi(Bool), orijinallik(Enum:Orijinal/A Kalite/Replika), sezon(Enum:İlkbahar-Yaz/Sonbahar-Kış/4 Mevsim), kimden(Enum:Sahibinden/Mağazadan), takas(Bool), topukYuksekligi(Enum:Düz/Alçak/Orta/Yüksek), fiyatPazarlik(Bool)\n" +
-            "Bilgisayar / Laptop (18+): marka(Enum:Apple/Lenovo/Asus/HP/Dell/MSI/Acer/Monster/Huawei/Microsoft), model(Enum,parent:marka), islemci(Enum:Intel i3/Intel i5/Intel i7/Intel i9/AMD Ryzen 3/AMD Ryzen 5/AMD Ryzen 7/AMD Ryzen 9/Apple M1/Apple M2/Apple M3/Apple M4), ram(Enum:4GB/8GB/16GB/32GB/64GB), depolamaKapasitesi(Enum:128GB SSD/256GB SSD/512GB SSD/1TB SSD/2TB SSD/1TB HDD/2TB HDD), ekranBoyutu(Enum:13.3/14/15.6/16/17.3), ekranCozunurlugu(Enum:HD/FHD/2K/4K), ekranKarti(Enum:Dahili/NVIDIA RTX 3050/RTX 3060/RTX 4050/RTX 4060/RTX 4070/RTX 4080/RTX 4090/AMD Radeon), isletimSistemi(Enum:Windows 11/Windows 10/macOS/Linux/FreeDOS), renk(Enum:Gri/Siyah/Gümüş/Beyaz/Mavi), bataryaOmru(Int), agirlik(Decimal), garanti(Bool), durumu(Enum:Sıfır/İkinci El/Yenilenmiş), kutusuVarMi(Bool), kimden(Enum:Sahibinden/Mağazadan), takas(Bool)\n" +
-            "Mobilya (14+): tip(Enum:Koltuk Takımı/Yatak Odası/Yemek Masası/TV Ünitesi/Kitaplık/Gardırop/Sehpa/Çalışma Masası/Sandalye/Büfe/Konsol), marka(Enum:İstikbal/Bellona/Doğtaş/Kelebek/Çilek/Mondi/Yataş/IKEA/Mudo/Diğer), malzeme(Enum:Ahşap/MDF/Kumaş/Deri/Metal/Cam/Mermer), renk(Enum:Beyaz/Siyah/Kahverengi/Ceviz/Gri/Krem/Bej/Antrasit), durum(Enum:Sıfır/Az Kullanılmış/Kullanılmış/Yenilenmiş), adet(Int), boyutlar(String), stil(Enum:Modern/Klasik/Rustik/Minimalist/Retro/Bohem/Scandinavian), kimden(Enum:Sahibinden/Mağazadan), garanti(Bool), montajDahil(Bool), takas(Bool), teslimatSekli(Enum:Alıcı Öder/Satıcı Karşılar/Elden Teslim), fiyatPazarlik(Bool)\n" +
-            "Özel Ders / Eğitim (12+): brans(Enum:Matematik/Fizik/Kimya/Biyoloji/Türkçe/İngilizce/Almanca/Fransızca/Tarih/Coğrafya/Müzik/Resim/Yazılım), hedefSinav(Enum:LGS/YKS-TYT/YKS-AYT/KPSS/ALES/YDS/DGS/Sınıf İçi/Yok), formatı(Enum:Yüz Yüze/Online/Hibrit), seviye(Enum:İlkokul/Ortaokul/Lise/Üniversite/Yetişkin), tecrube(Enum:0-2 Yıl/3-5 Yıl/6-10 Yıl/10+ Yıl), konum(String), dersSuresi(Enum:30dk/45dk/60dk/90dk/120dk), grupMu(Enum:Bireysel/Grup/Her İkisi), kimden(Enum:Öğretmen/Üniversite Öğrencisi/Eğitim Kurumu), referansVarMi(Bool), uygunluk(Enum:Hafta İçi/Hafta Sonu/Her Gün/Akşam), ilkDersUcretsiz(Bool)";
+            "Otomobil / Arazi SUV / Ticari Araç (20+): marka(Enum), model(Enum,parent:marka), seri(Enum,parent:model), yil(Int), km(Int), vitesTipi(Enum:Manuel/Otomatik/Yarı Otomatik/Triptonik), yakitTipi(Enum:Benzin/Dizel/LPG/Hybrid/Elektrik/Benzin & LPG), kasaTipi(Enum:Sedan/Hatchback/SUV/Station Wagon/Coupe/Cabrio/Minivan/Pick-up), motorHacmi(Enum:1.0/1.2/1.4/1.6/1.8/2.0/2.5/3.0+), beygirGucu(Int), renk(Enum:Beyaz/Siyah/Gri/Kırmızı/Mavi/Lacivert/Gümüş/Füme/Kahverengi/Yeşil/Sarı/Turuncu), cekisTipi(Enum:Önden/Arkadan/4x4/AWD), plakaUyrugu(Enum:TR/Yabancı), hasarKaydi(Enum:Hasarsız/Hafif Hasarlı/Ağır Hasarlı/Boyalı/Değişenli), tramerDegeri(Int), garanti(Bool), takasUygun(Bool), kimden(Enum:Sahibinden/Galeriden), durumu(Enum:Sıfır/İkinci El)\n" +
+            "Motosiklet (15+): marka(Enum:Honda/Yamaha/Kawasaki/Suzuki/BMW/Ducati/Harley-Davidson/Royal Enfield/KTM/Triumph), model(Enum,parent:marka), yil(Int), km(Int), motor(Enum:125cc/250cc/300cc/400cc/500cc/600cc/650cc/750cc/900cc/1000cc+), tip(Enum:Naked/Sport/Touring/Enduro/Cross/Scooter/Chopper/Cafe Racer), renk(Enum:Siyah/Beyaz/Kırmızı/Mavi/Turuncu/Yeşil/Gri/Sarı), vites(Enum:Manuel/Otomatik/Semi-Otomatik), durumu(Enum:Sıfır/İkinci El), hasarKaydi(Enum:Hasarsız/Hasarlı), ehliyet(Enum:A1/A2/A), kimden(Enum:Sahibinden/Bayiden), takasUygun(Bool), garanti(Bool)\n" +
+            "Konut (20+): konutTipi(Enum:Daire/Müstakil/Villa/Residence/Yazlık/Çatı Katı/Dublex/Triplex), odaSayisi(Enum:1+0/1+1/2+1/3+1/4+1/5+1/6+), m2Brut(Int), m2Net(Int), binaYasi(Int), bulunduguKat(Enum:Giriş/1/2/3/4/5/6/7-10/11-15/16-20/Çatı), toplamKat(Int), isitmaTipi(Enum:Doğalgaz Kombi/Merkezi/Soba/Klima/Yerden Isıtma/Isı Pompası), banyoSayisi(Int), balkon(Bool), esyali(Bool), siteIcinde(Bool), otopark(Enum:Açık/Kapalı/Yok), cephe(Enum:Kuzey/Güney/Doğu/Batı/Güneydoğu/Güneybatı), yapininDurumu(Enum:Sıfır/İkinci El/Devam Eden Proje), tapuDurumu(Enum:Kat Mülkiyetli/Kat İrtifaklı/Hisseli/Müstakil/Kooperatif), aidat(Int), kimden(Enum:Sahibinden/Emlakçıdan/İnşaat Firmasından), krediyeUygun(Bool), takas(Bool)\n" +
+            "Arsa (12+): arsaTipi(Enum:İmarlı/İmarsız/Tarla/Bağ & Bahçe/Sanayi/Ticari), m2(Int), ada(String), parsel(String), imar(Enum:Konut/Ticaret/Turizm/Sanayi/Tarım/Karma), taks(Decimal), kaks(Decimal), tapuDurumu(Enum:Hisseli/Müstakil/Arazi), altyapi(Enum:Var/Yok/Kısmen), yol(Enum:Asfalt/Stabilize/Toprak), konum(String), kimden(Enum:Sahibinden/Emlakçıdan), krediyeUygun(Bool), takas(Bool)\n" +
+            "İş Yeri (15+): isyeriTipi(Enum:Ofis/Dükkan/Depo/Fabrika/Atölye/Plaza/AVM/Restoran/Cafe/Otel), m2Brut(Int), m2Net(Int), binaYasi(Int), bulunduguKat(Enum:Bodrum/Giriş/1/2/3/4/5+), isitmaTipi(Enum:Doğalgaz Kombi/Merkezi/Klima/Soba/Yerden Isıtma), siteIcinde(Bool), esyali(Bool), vitrin(Bool), wc(Bool), depo(Bool), aidat(Int), tapuDurumu(Enum:Kat Mülkiyetli/Kat İrtifaklı/Hisseli/Müstakil), kimden(Enum:Sahibinden/Emlakçıdan), krediyeUygun(Bool)";
 
         var body = new
         {
@@ -228,6 +275,7 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             .ToListAsync(ct);
 
         var rootSlugRaw = doc.TryGetProperty("rootSlug", out var rs) ? rs.GetString() : null;
+        var parentSlugRaw = doc.TryGetProperty("suggestedParentSlug", out var ps) && ps.ValueKind == JsonValueKind.String ? ps.GetString() : null;
         var childSlugRaw = doc.TryGetProperty("suggestedChildSlug", out var cs) ? cs.GetString() : null;
         var conf = doc.TryGetProperty("confidence", out var cf) && cf.TryGetDouble(out var cfd) ? cfd : 0.75;
 
@@ -235,6 +283,7 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
             throw new InvalidOperationException("OpenAI yanıtında rootSlug yok veya geçersiz.");
 
         var rootSlugNorm = CategorySlugHelper.SanitizeSlug(rootSlugRaw);
+        var parentSlugNorm = !string.IsNullOrWhiteSpace(parentSlugRaw) ? CategorySlugHelper.SanitizeSlug(parentSlugRaw) : null;
         var childSlugNorm = !string.IsNullOrWhiteSpace(childSlugRaw) ? CategorySlugHelper.SanitizeSlug(childSlugRaw) : null;
 
         var rootCat = roots.FirstOrDefault(r => r.Slug == rootSlugNorm)
@@ -283,18 +332,53 @@ public sealed class AiListingExtractionService : IAiListingExtractionService
                 throw new InvalidOperationException($"Kategori oluşturulamadı (rootSlug: {rootSlugRaw}).");
         }
 
-        var subs = children.Where(c => c.ParentId == rootCat.Id)
-            .Select(c => new SubCategoryOptionDto(c.Id, c.Name, c.Slug))
-            .ToList();
+        // Orta katman kategoriler (root'un direkt çocukları)
+        var midCats = children.Where(c => c.ParentId == rootCat.Id).ToList();
+
+        // subs: kullanıcıya gösterilen alt kategori seçenekleri
+        // Önce grandchild'ları (parent slug altındakiler) göster, yoksa root'un direkt çocukları
+        IReadOnlyList<SubCategoryOptionDto> subs;
+        if (!string.IsNullOrEmpty(parentSlugNorm))
+        {
+            var midCat = midCats.FirstOrDefault(m => m.Slug == parentSlugNorm)
+                ?? midCats.FirstOrDefault(m => CategorySlugHelper.SlugEquals(m.Slug, parentSlugRaw!));
+            var grandchildren = midCat is not null
+                ? children.Where(c => c.ParentId == midCat.Id).ToList()
+                : [];
+            subs = (grandchildren.Count > 0 ? grandchildren : midCats)
+                .Select(c => new SubCategoryOptionDto(c.Id, c.Name, c.Slug))
+                .ToList();
+        }
+        else
+        {
+            subs = midCats.Select(c => new SubCategoryOptionDto(c.Id, c.Name, c.Slug)).ToList();
+        }
 
         Guid? leafId = null;
         if (!string.IsNullOrEmpty(childSlugRaw))
         {
-            var match = children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == childSlugNorm)
-                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlugRaw))
-                ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == CategorySlugHelper.NormalizeToAscii(childSlugRaw));
-            if (match is not null) leafId = match.Id;
-            else leafId = children.FirstOrDefault(c => c.ParentId == rootCat.Id)?.Id;
+            // 3-katman: önce parentSlug altındaki grandchild'ı ara
+            if (!string.IsNullOrEmpty(parentSlugNorm))
+            {
+                var midCat = midCats.FirstOrDefault(m => m.Slug == parentSlugNorm)
+                    ?? midCats.FirstOrDefault(m => CategorySlugHelper.SlugEquals(m.Slug, parentSlugRaw!));
+                if (midCat is not null)
+                {
+                    var grandchildMatch = children.FirstOrDefault(c => c.ParentId == midCat.Id && c.Slug == childSlugNorm)
+                        ?? children.FirstOrDefault(c => c.ParentId == midCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlugRaw));
+                    if (grandchildMatch is not null) leafId = grandchildMatch.Id;
+                }
+            }
+
+            // 2-katman fallback: root'un direkt çocuğu
+            if (leafId is null)
+            {
+                var match = children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == childSlugNorm)
+                    ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && CategorySlugHelper.SlugEquals(c.Slug, childSlugRaw))
+                    ?? children.FirstOrDefault(c => c.ParentId == rootCat.Id && c.Slug == CategorySlugHelper.NormalizeToAscii(childSlugRaw));
+                if (match is not null) leafId = match.Id;
+                else leafId = children.FirstOrDefault(c => c.ParentId == rootCat.Id)?.Id;
+            }
         }
 
         string? sugTitle = null;

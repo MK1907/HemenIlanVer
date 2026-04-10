@@ -1273,6 +1273,26 @@ a {
   margin: 0;
 }
 
+/* Listing type selector */
+.cl-listing-type-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.cl-type-btn {
+  padding: 0.4rem 0.75rem;
+  border: 1.5px solid #334155;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.cl-type-btn:hover { border-color: #e85d04; color: #e85d04; }
+.cl-type-btn--active { border-color: #e85d04; background: #e85d04; color: #fff; }
+
 /* Image upload */
 .cl-img-upload-label {
   display: inline-flex;

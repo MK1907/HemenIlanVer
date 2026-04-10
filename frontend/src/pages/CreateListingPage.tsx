@@ -30,7 +30,7 @@ export function CreateListingPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState<string>('');
-  const [listingType] = useState('Satilik');
+  const [listingType, setListingType] = useState('Satilik');
   const [attrValues, setAttrValues] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
@@ -413,6 +413,25 @@ export function CreateListingPage() {
                 </div>
 
                 <form className="cl-form" onSubmit={publish}>
+                  <div className="cl-field">
+                    <label className="cl-field__label">İlan Türü</label>
+                    <div className="cl-listing-type-group">
+                      {[
+                        { value: 'Satilik',       label: 'Satılık' },
+                        { value: 'Kiralik',       label: 'Kiralık' },
+                        { value: 'DevrenSatilik', label: 'Devren Satılık' },
+                        { value: 'DevrenKiralik', label: 'Devren Kiralık' },
+                      ].map(({ value, label }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={`cl-type-btn${listingType === value ? ' cl-type-btn--active' : ''}`}
+                          onClick={() => setListingType(value)}
+                        >{label}</button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="cl-field">
                     <label className="cl-field__label" htmlFor="cl-title">Başlık</label>
                     <input

@@ -46,21 +46,28 @@ public sealed class ListingsController : ControllerBase
     {
         if (!string.IsNullOrWhiteSpace(q) && searchMode is null or "hybrid" or "vector")
         {
-            Guid? userId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null;
-            var extraction = await _searchExtractor.ExtractAsync(
-                userId, new SearchExtractRequest(q, categoryId), ct);
+            try
+            {
+                Guid? userId = User.Identity?.IsAuthenticated == true ? User.GetUserId() : null;
+                var extraction = await _searchExtractor.ExtractAsync(
+                    userId, new SearchExtractRequest(q, categoryId), ct);
 
-            var effectiveCat = extraction.CategoryId ?? categoryId;
-            var effectiveCity = extraction.CityId ?? cityId;
-            var effectiveMinPrice = extraction.MinPrice ?? minPrice;
-            var effectiveMaxPrice = extraction.MaxPrice ?? maxPrice;
-            var attrFilters = extraction.Filters.Count > 0 ? extraction.Filters : null;
+                var effectiveCat = extraction.CategoryId ?? categoryId;
+                var effectiveCity = extraction.CityId ?? cityId;
+                var effectiveMinPrice = extraction.MinPrice ?? minPrice;
+                var effectiveMaxPrice = extraction.MaxPrice ?? maxPrice;
+                var attrFilters = extraction.Filters.Count > 0 ? extraction.Filters : null;
 
-            var result = await _rag.HybridSearchAsync(
-                q, effectiveCat, effectiveCity,
-                effectiveMinPrice, effectiveMaxPrice,
-                attrFilters, page, pageSize, ct);
-            return Ok(result);
+                var result = await _rag.HybridSearchAsync(
+                    q, effectiveCat, effectiveCity,
+                    effectiveMinPrice, effectiveMaxPrice,
+                    attrFilters, page, pageSize, ct);
+                return Ok(result);
+            }
+            catch
+            {
+                // AI arama başarısız → normal aramaya düş
+            }
         }
 
         var fallback = await _listings.SearchAsync(categoryId, cityId, minPrice, maxPrice, q, filterModel, filterGear, page, pageSize, sort, ct);

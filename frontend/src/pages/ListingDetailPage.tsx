@@ -117,7 +117,11 @@ export function ListingDetailPage() {
           <div className="ldp-info__header">
             <div className="ldp-info__tags">
               <span className="ldp-tag ldp-tag--cat">{detail.categoryName}</span>
-              <span className="ldp-tag ldp-tag--type">{detail.listingType === 'Satilik' ? 'Satılık' : detail.listingType}</span>
+              <span className="ldp-tag ldp-tag--type">{{
+                  Satilik: 'Satılık', Kiralik: 'Kiralık',
+                  DevrenSatilik: 'Devren Satılık', DevrenKiralik: 'Devren Kiralık',
+                  HizmetVeriyor: 'Hizmet Veriyor', HizmetAriyor: 'Hizmet Arıyor',
+                }[detail.listingType] ?? detail.listingType}</span>
             </div>
             <h1 className="ldp-info__title">{detail.title}</h1>
             <div className="ldp-info__meta">

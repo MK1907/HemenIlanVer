@@ -22,11 +22,19 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
 
         var rootName = GetString(b, "rootName") ?? "Yeni ana kategori";
         var rootSlug = CategorySlugHelper.SanitizeSlug(GetString(b, "rootSlug") ?? rootName);
+
+        // 3-katman desteği: parentName/parentSlug + childName/childSlug
+        // 2-katman (eski format): sadece childName/childSlug — parent yoksa root doğrudan parent olur
+        var parentNameRaw = GetString(b, "parentName");
+        var parentSlugRaw = GetString(b, "parentSlug");
+        var hasParent = !string.IsNullOrWhiteSpace(parentNameRaw) && !string.IsNullOrWhiteSpace(parentSlugRaw);
+
         var childName = GetString(b, "childName") ?? "Genel";
         var childSlug = CategorySlugHelper.SanitizeSlug(GetString(b, "childSlug") ?? childName);
 
         await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
 
+        // Root oluştur / bul
         var allRoots = await _db.Categories.Where(x => x.ParentId == null).ToListAsync(cancellationToken);
         var root = allRoots.FirstOrDefault(x => x.Slug == rootSlug)
             ?? allRoots.FirstOrDefault(x => CategorySlugHelper.SlugEquals(x.Slug, rootSlug));
@@ -47,18 +55,47 @@ public sealed class AiCategoryBootstrapService : IAiCategoryBootstrapService
             await _db.SaveChangesAsync(cancellationToken);
         }
 
-        var allChildren = await _db.Categories.Where(x => x.ParentId == root.Id).ToListAsync(cancellationToken);
+        // Parent (orta katman) oluştur / bul — sadece 3-katman modunda
+        Category leafParent = root; // 2-katman modunda leaf'in parent'ı root'un kendisi
+        if (hasParent)
+        {
+            var parentSlug = CategorySlugHelper.SanitizeSlug(parentSlugRaw!);
+            var allMids = await _db.Categories.Where(x => x.ParentId == root.Id).ToListAsync(cancellationToken);
+            var mid = allMids.FirstOrDefault(x => x.Slug == parentSlug)
+                ?? allMids.FirstOrDefault(x => CategorySlugHelper.SlugEquals(x.Slug, parentSlugRaw!));
+            if (mid is null)
+            {
+                var maxMid = await _db.Categories.Where(x => x.ParentId == root.Id).MaxAsync(x => (int?)x.SortOrder, cancellationToken) ?? 0;
+                mid = new Category
+                {
+                    Id = Guid.NewGuid(),
+                    Name = parentNameRaw!,
+                    Slug = parentSlug,
+                    ParentId = root.Id,
+                    SortOrder = maxMid + 1,
+                    IsActive = true,
+                    DefaultListingType = ListingType.Satilik,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                _db.Categories.Add(mid);
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            leafParent = mid;
+        }
+
+        // Leaf (alt kategori) oluştur / bul
+        var allChildren = await _db.Categories.Where(x => x.ParentId == leafParent.Id).ToListAsync(cancellationToken);
         var child = allChildren.FirstOrDefault(x => x.Slug == childSlug)
             ?? allChildren.FirstOrDefault(x => CategorySlugHelper.SlugEquals(x.Slug, childSlug));
         if (child is null)
         {
-            var maxChild = await _db.Categories.Where(x => x.ParentId == root.Id).MaxAsync(x => (int?)x.SortOrder, cancellationToken) ?? 0;
+            var maxChild = await _db.Categories.Where(x => x.ParentId == leafParent.Id).MaxAsync(x => (int?)x.SortOrder, cancellationToken) ?? 0;
             child = new Category
             {
                 Id = Guid.NewGuid(),
                 Name = childName,
                 Slug = childSlug,
-                ParentId = root.Id,
+                ParentId = leafParent.Id,
                 SortOrder = maxChild + 1,
                 IsActive = true,
                 DefaultListingType = ListingType.Satilik,
